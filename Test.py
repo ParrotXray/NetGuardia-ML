@@ -69,7 +69,7 @@ print("\n📂 讀取測試資料...")
 test_files = [
 
     './csv/Friday-WorkingHours-Morning.pcap_ISCX.csv',
-    './csv/Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv',
+    './FTP-BruteForce.csv',
 
 ]
 

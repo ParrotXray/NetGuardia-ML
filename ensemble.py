@@ -342,37 +342,6 @@ print(f"   FPR: {best['fpr']:.2%}")
 print(f"   Precision: {best['precision']:.3f}")
 print(f"   F1: {best['f1']:.3f}")
 
-# === 🔟 與原始 AE 比較 ===
-print("\n" + "=" * 60)
-print("📊 vs 原始 Autoencoder")
-print("=" * 60)
-
-try:
-    ae_output = pd.read_csv("output_v3.csv")
-    ae_anomaly = ae_output['anomaly'].values
-
-    ae_tp = ((y_test == 1) & (ae_anomaly == 1)).sum()
-    ae_fp = ((y_test == 0) & (ae_anomaly == 1)).sum()
-    ae_fn = ((y_test == 1) & (ae_anomaly == 0)).sum()
-    ae_tpr = ae_tp / (ae_tp + ae_fn)
-    ae_fpr = ae_fp / (ae_fp + (y_test == 0).sum())
-    ae_prec = ae_tp / (ae_tp + ae_fp)
-    ae_f1 = 2 * ae_prec * ae_tpr / (ae_prec + ae_tpr)
-
-    print(f"\n{'Model':<25} {'TPR':>7} {'FPR':>7} {'Precision':>10} {'F1':>7}")
-    print("-" * 60)
-    print(f"{'Original AE (3 layers)':<25} {ae_tpr:>6.1%} {ae_fpr:>6.1%} {ae_prec:>10.3f} {ae_f1:>6.3f}")
-    print(f"{'Deep AE (6 layers)':<25} {best['tpr']:>6.1%} {best['fpr']:>6.1%} {best['precision']:>10.3f} {best['f1']:>6.3f}")
-
-    tpr_improve = (best['tpr'] - ae_tpr) / ae_tpr * 100
-    f1_improve = (best['f1'] - ae_f1) / ae_f1 * 100
-
-    print(f"\n📈 改善:")
-    print(f"   TPR: {tpr_improve:+.1f}%")
-    print(f"   F1: {f1_improve:+.1f}%")
-except Exception as e:
-    print(f"⚠️ 找不到原始 AE 結果: {e}")
-
 # === 各攻擊類型 ===
 print("\n🎯 各攻擊類型偵測率:")
 for at in sorted(labels[labels != 'BENIGN'].unique()):

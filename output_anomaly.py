@@ -10,6 +10,7 @@ from sklearn.preprocessing import StandardScaler
 import numpy as np
 from sklearn.ensemble import IsolationForest
 from pathlib import Path
+import os
 
 print("=" * 60)
 print("🚀 CIC-IDS2017 資料集預處理流程")
@@ -28,19 +29,20 @@ file_paths = [
     './csv/Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv',
     './csv/Friday-WorkingHours-Morning.pcap_ISCX.csv',
     './csv/Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv',
-    './csv/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv'
+    './csv/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv',
+    './csv/FTP-BruteForce.csv'
 ]
 
 datasets = []
-for i, path in enumerate(file_paths, 1):
+for filename in os.listdir("./csv"):
     try:
-        print(f"  [{i}/8] 載入: {Path(path).name}")
-        df = pd.read_csv(path)
+        print(f"  載入: {filename}")
+        df = pd.read_csv(f"./csv/{filename}")
         df.columns = df.columns.str.strip()  # 清理欄位名稱
         datasets.append(df)
         print(f"       ✓ 形狀: {df.shape}, 標籤: {df['Label'].nunique()} 類")
     except FileNotFoundError:
-        print(f"       ✗ 檔案不存在: {path}")
+        print(f"       ✗ 檔案不存在: {filename}")
     except Exception as e:
         print(f"       ✗ 錯誤: {e}")
 
@@ -143,6 +145,6 @@ print("\n" + "=" * 60)
 print("✨ 預處理完成!")
 print("=" * 60)
 print("\n📌 下一步:")
-print("  1. 使用 'output_anomaly_combined.csv' 訓練 Autoencoder")
+print("  1. 使用 'output_anomaly.csv' 訓練 Autoencoder")
 print("  2. 'anomaly_if' 欄位為 IsolationForest 的參考標記")
 print("  3. 'Label' 欄位為真實標籤,可用於評估")
