@@ -4,6 +4,7 @@ Deep Autoencoder + Ensemble for Network Intrusion Detection
 1. Deep Autoencoder (6 層) - 更深的特徵學習
 2. Random Forest - 基於統計特徵的分類
 3. Ensemble - 結合兩者的優勢
+4. 🔥 記錄 AE 正規化參數供推論使用
 """
 import pandas as pd
 import numpy as np
@@ -201,14 +202,53 @@ print(f"\n✅ 完成: {epochs} epochs")
 print(f"   Final Train Loss: {history.history['loss'][-1]:.6f}")
 print(f"   Final Val Loss: {history.history['val_loss'][-1]:.6f}")
 
-# === 6️⃣ Deep AE 預測 ===
-print("\n🔍 Deep AE 異常分數...")
+# === 🔥 5.5️⃣ 計算訓練集的 AE 正規化參數 ===
+print("\n" + "=" * 60)
+print("📊 計算 AE 正規化參數 (BENIGN 訓練集)")
+print("=" * 60)
+
+# 對 BENIGN 訓練集進行預測
+ae_recon_benign = deep_ae.predict(X_benign_scaled, batch_size=2048, verbose=1)
+ae_mse_benign = np.mean(np.square(X_benign_scaled - ae_recon_benign), axis=1)
+
+# 計算統計量
+ae_normalization_params = {
+    'min': float(ae_mse_benign.min()),
+    'max': float(ae_mse_benign.max()),
+    'mean': float(ae_mse_benign.mean()),
+    'std': float(ae_mse_benign.std()),
+    'median': float(np.median(ae_mse_benign)),
+    'p90': float(np.percentile(ae_mse_benign, 90)),
+    'p95': float(np.percentile(ae_mse_benign, 95)),
+    'p99': float(np.percentile(ae_mse_benign, 99))
+}
+
+print(f"✅ AE MSE 統計 (BENIGN 訓練集):")
+print(f"   Min:    {ae_normalization_params['min']:.6f}")
+print(f"   Max:    {ae_normalization_params['max']:.6f}")
+print(f"   Mean:   {ae_normalization_params['mean']:.6f}")
+print(f"   Std:    {ae_normalization_params['std']:.6f}")
+print(f"   Median: {ae_normalization_params['median']:.6f}")
+print(f"   P95:    {ae_normalization_params['p95']:.6f}")
+print(f"   P99:    {ae_normalization_params['p99']:.6f}")
+
+# === 6️⃣ Deep AE 預測 (全部測試資料) ===
+print("\n🔍 Deep AE 異常分數 (全部測試資料)...")
 
 # 計算 MSE
 predictions = deep_ae.predict(X_test_scaled, batch_size=2048, verbose=1)
 ae_mse = np.mean(np.square(X_test_scaled - predictions), axis=1)
 
 print(f"✅ Deep AE 異常分數計算完成")
+
+# 顯示全部資料的統計
+ae_mse_benign_test = ae_mse[y_test == 0]
+ae_mse_attack_test = ae_mse[y_test == 1]
+
+print(f"\nAE MSE 統計 (測試集):")
+print(f"  BENIGN: Mean={ae_mse_benign_test.mean():.6f}, Median={np.median(ae_mse_benign_test):.6f}")
+print(f"  Attack: Mean={ae_mse_attack_test.mean():.6f}, Median={np.median(ae_mse_attack_test):.6f}")
+print(f"  分離度: {ae_mse_attack_test.mean() / ae_mse_benign_test.mean():.2f}x")
 
 # === 7️⃣ 訓練 Random Forest ===
 print("\n" + "=" * 60)
@@ -261,11 +301,17 @@ print("\n" + "=" * 60)
 print("🔀 Ensemble 策略")
 print("=" * 60)
 
-# 正規化分數到 [0, 1]
-ae_score_norm = (ae_mse - ae_mse.min()) / (ae_mse.max() - ae_mse.min() + 1e-10)
+# 🔥 使用訓練集的 min/max 正規化
+ae_score_norm = (ae_mse - ae_normalization_params['min']) / \
+                (ae_normalization_params['max'] - ae_normalization_params['min'] + 1e-10)
+ae_score_norm = np.clip(ae_score_norm, 0, 1)  # 裁剪到 [0, 1]
+
 rf_score_norm = rf_proba
 
-print("測試多種 Ensemble 策略...")
+print(f"AE Score 正規化範圍: [{ae_score_norm.min():.4f}, {ae_score_norm.max():.4f}]")
+print(f"RF Score 範圍: [{rf_score_norm.min():.4f}, {rf_score_norm.max():.4f}]")
+
+print("\n測試多種 Ensemble 策略...")
 
 strategies = {}
 
@@ -352,7 +398,7 @@ for at in sorted(labels[labels != 'BENIGN'].unique()):
     status = '✅' if rate > 0.5 else '⚠️' if rate > 0.2 else '❌'
     print(f"{status} {at[:30]:<30} {detected:>6}/{total:<6} ({rate:>6.1%})")
 
-# === 儲存 ===
+# === 🔥 儲存（加入 AE 正規化參數）===
 print("\n💾 儲存...")
 
 output = X_all.copy()
@@ -372,9 +418,16 @@ joblib.dump({
     'clip_params': clip_params,
     'best': best,
     'results': results,
-    'encoding_dim': encoding_dim
+    'encoding_dim': encoding_dim,
+    'ae_normalization': ae_normalization_params  # 🔥 新增
 }, "deep_ae_ensemble_config.pkl")
 print(f"✅ deep_autoencoder.keras, random_forest.pkl, deep_ae_ensemble_config.pkl")
+
+print(f"\n📊 配置檔包含:")
+print(f"   - Scaler 參數")
+print(f"   - Clip 參數 ({len(clip_params)} 個特徵)")
+print(f"   - Ensemble 最佳策略: {best['name']}")
+print(f"   - 🔥 AE 正規化參數 (Min/Max/Mean/Std/P95/P99)")
 
 # === 視覺化 ===
 print("\n📊 生成視覺化...")
@@ -463,4 +516,5 @@ print(f"🎯 Deep AE: 6 layers, Bottleneck={encoding_dim}")
 print(f"🌲 RF: {rf.n_estimators} trees")
 print(f"🏆 Best: {best['name']}")
 print(f"📊 TPR: {best['tpr']:.1%}, F1: {best['f1']:.3f}")
+print(f"🔥 AE 正規化: Min={ae_normalization_params['min']:.6f}, Max={ae_normalization_params['max']:.6f}")
 print("=" * 60)

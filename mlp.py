@@ -6,6 +6,7 @@ from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.utils.class_weight import compute_class_weight
 from imblearn.over_sampling import SMOTE
 from tensorflow.keras.models import Sequential
+from tensorflow.keras import layers, models
 from tensorflow.keras.layers import Dense, Dropout, Input, BatchNormalization
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.optimizers import Adam
@@ -142,21 +143,27 @@ print("=" * 60)
 n_classes = len(encoder.classes_)
 input_dim = X_train_balanced.shape[1]
 
-mlp_improved = Sequential([
-    Input(shape=(input_dim,)),
-    Dense(512, activation='relu'),
-    BatchNormalization(),
-    Dropout(0.4),
-    Dense(256, activation='relu'),
-    BatchNormalization(),
-    Dropout(0.3),
-    Dense(128, activation='relu'),
-    BatchNormalization(),
-    Dropout(0.2),
-    Dense(64, activation='relu'),
-    Dropout(0.1),
-    Dense(n_classes, activation='softmax')
-], name='mlp_improved')
+# 🔥 Functional API（和 ensemble.py 的 Deep AE 一樣）
+inputs = layers.Input(shape=(input_dim,), name='input')
+
+x = layers.Dense(512, activation='relu')(inputs)
+x = layers.BatchNormalization()(x)
+x = layers.Dropout(0.4)(x)
+
+x = layers.Dense(256, activation='relu')(x)
+x = layers.BatchNormalization()(x)
+x = layers.Dropout(0.3)(x)
+
+x = layers.Dense(128, activation='relu')(x)
+x = layers.BatchNormalization()(x)
+x = layers.Dropout(0.2)(x)
+
+x = layers.Dense(64, activation='relu')(x)
+x = layers.Dropout(0.1)(x)
+
+outputs = layers.Dense(n_classes, activation='softmax', name='output')(x)
+
+mlp_improved = models.Model(inputs=inputs, outputs=outputs, name='mlp_improved')
 
 mlp_improved.compile(
     optimizer=Adam(learning_rate=0.001),
