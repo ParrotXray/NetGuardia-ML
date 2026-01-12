@@ -4,6 +4,7 @@ NetGuardia 模型導出工具
 - 將所有預處理參數導出為 JSON
 - 供 Rust 程式載入使用
 """
+
 import json
 import numpy as np
 import pandas as pd
@@ -54,10 +55,10 @@ except:
 
 try:
     config = joblib.load("../deep_ae_ensemble_config.pkl")
-    scaler = config['scaler']
-    clip_params = config['clip_params']
-    best_strategy = config['best']
-    ae_normalization = config.get('ae_normalization', None)  # 🔥 載入 AE 正規化參數
+    scaler = config["scaler"]
+    clip_params = config["clip_params"]
+    best_strategy = config["best"]
+    ae_normalization = config.get("ae_normalization", None)  # 🔥 載入 AE 正規化參數
     print("✅ Ensemble 配置載入")
 
     if ae_normalization:
@@ -83,11 +84,7 @@ print("=" * 60)
 input_dim = deep_ae.input.shape[1]
 spec = (tf.TensorSpec((None, input_dim), tf.float32, name="input"),)
 
-model_proto, _ = tf2onnx.convert.from_keras(
-    deep_ae,
-    input_signature=spec,
-    opset=13
-)
+model_proto, _ = tf2onnx.convert.from_keras(deep_ae, input_signature=spec, opset=13)
 
 onnx.save(model_proto, "../deep_autoencoder.onnx")
 print("✅ 已儲存: deep_autoencoder.onnx")
@@ -105,13 +102,9 @@ print("🔄 轉換 Random Forest → ONNX")
 print("=" * 60)
 
 n_features = len(clip_params)
-initial_type = [('float_input', FloatTensorType([None, n_features]))]
+initial_type = [("float_input", FloatTensorType([None, n_features]))]
 
-onx = convert_sklearn(
-    rf,
-    initial_types=initial_type,
-    target_opset=13
-)
+onx = convert_sklearn(rf, initial_types=initial_type, target_opset=13)
 
 with open("../random_forest.onnx", "wb") as f:
     f.write(onx.SerializeToString())
@@ -133,11 +126,7 @@ print("=" * 60)
 mlp_input_dim = mlp.input_shape[1]
 spec = (tf.TensorSpec((None, mlp_input_dim), tf.float32, name="input"),)
 
-model_proto, _ = tf2onnx.convert.from_keras(
-    mlp,
-    input_signature=spec,
-    opset=13
-)
+model_proto, _ = tf2onnx.convert.from_keras(mlp, input_signature=spec, opset=13)
 
 mlp_onnx_filename = f"{mlp_name}.onnx"
 onnx.save(model_proto, mlp_onnx_filename)
@@ -159,38 +148,42 @@ print("=" * 60)
 scaler_params = {
     "mean": scaler.mean_.tolist(),
     "std": scaler.scale_.tolist(),
-    "feature_names": scaler.feature_names_in_.tolist() if hasattr(scaler, 'feature_names_in_') else []
+    "feature_names": (
+        scaler.feature_names_in_.tolist()
+        if hasattr(scaler, "feature_names_in_")
+        else []
+    ),
 }
 
 # 整理 Clip 參數
 clip_params_json = {}
 for col, params in clip_params.items():
     clip_params_json[col] = {
-        "lower": float(params['lower']),
-        "upper": float(params['upper'])
+        "lower": float(params["lower"]),
+        "upper": float(params["upper"]),
     }
 
 # 整理 Ensemble 參數
 ensemble_params = {
-    "strategy_name": best_strategy['name'],
-    "threshold": float(best_strategy['threshold']),
-    "tpr": float(best_strategy['tpr']),
-    "fpr": float(best_strategy['fpr']),
-    "precision": float(best_strategy['precision']),  # 🔥 修正這裡
-    "f1": float(best_strategy['f1'])
+    "strategy_name": best_strategy["name"],
+    "threshold": float(best_strategy["threshold"]),
+    "tpr": float(best_strategy["tpr"]),
+    "fpr": float(best_strategy["fpr"]),
+    "precision": float(best_strategy["precision"]),  # 🔥 修正這裡
+    "f1": float(best_strategy["f1"]),
 }
 
 # 🔥 整理 AE 正規化參數
 if ae_normalization:
     ae_normalization_json = {
-        "min": float(ae_normalization['min']),
-        "max": float(ae_normalization['max']),
-        "mean": float(ae_normalization['mean']),
-        "std": float(ae_normalization['std']),
-        "median": float(ae_normalization.get('median', 0.0)),
-        "p90": float(ae_normalization.get('p90', 0.0)),
-        "p95": float(ae_normalization.get('p95', 0.0)),
-        "p99": float(ae_normalization.get('p99', 0.0))
+        "min": float(ae_normalization["min"]),
+        "max": float(ae_normalization["max"]),
+        "mean": float(ae_normalization["mean"]),
+        "std": float(ae_normalization["std"]),
+        "median": float(ae_normalization.get("median", 0.0)),
+        "p90": float(ae_normalization.get("p90", 0.0)),
+        "p95": float(ae_normalization.get("p95", 0.0)),
+        "p99": float(ae_normalization.get("p99", 0.0)),
     }
 else:
     print("⚠️  使用預設的 AE 正規化參數（不建議）")
@@ -202,57 +195,46 @@ else:
         "median": 0.0,
         "p90": 0.0,
         "p95": 0.0,
-        "p99": 0.0
+        "p99": 0.0,
     }
 
 # 整理攻擊類型映射
-attack_labels = {
-    str(i): label for i, label in enumerate(le.classes_)
-}
+attack_labels = {str(i): label for i, label in enumerate(le.classes_)}
 
 # 組合所有配置
 config_json = {
     "version": "1.0.0",
     "created_at": pd.Timestamp.now().isoformat(),
-
     "models": {
         "deep_autoencoder": {
             "file": "deep_autoencoder.onnx",
             "input_dim": int(input_dim),
-            "encoding_dim": int(config.get('encoding_dim', 16))
+            "encoding_dim": int(config.get("encoding_dim", 16)),
         },
         "random_forest": {
             "file": "random_forest.onnx",
             "n_estimators": int(rf.n_estimators),
-            "n_features": int(n_features)
+            "n_features": int(n_features),
         },
         "mlp_classifier": {
             "file": mlp_onnx_filename,
             "input_dim": int(mlp_input_dim),
-            "n_classes": int(len(le.classes_))
-        }
+            "n_classes": int(len(le.classes_)),
+        },
     },
-
     "preprocessing": {
         "clip_params": clip_params_json,
         "scaler": scaler_params,
-        "post_scaling_clip": {
-            "min": -5.0,
-            "max": 5.0
-        }
+        "post_scaling_clip": {"min": -5.0, "max": 5.0},
     },
-
     "ensemble": ensemble_params,
-
     "ae_normalization": ae_normalization_json,  # 🔥 使用實際參數
-
     "attack_labels": attack_labels,
-
-    "feature_order": scaler_params["feature_names"]
+    "feature_order": scaler_params["feature_names"],
 }
 
 # 儲存為 JSON
-with open("../netguardia_config.json", "w", encoding='utf-8') as f:
+with open("../netguardia_config.json", "w", encoding="utf-8") as f:
     json.dump(config_json, f, indent=2, ensure_ascii=False)
 
 print("✅ 已儲存: netguardia_config.json")
@@ -268,10 +250,10 @@ inference_config = {
     "post_clip_max": 5.0,
     "ae_normalization": ae_normalization_json,  # 🔥 加入正規化參數
     "attack_labels": attack_labels,
-    "feature_names": scaler_params["feature_names"]
+    "feature_names": scaler_params["feature_names"],
 }
 
-with open("../netguardia_inference.json", "w", encoding='utf-8') as f:
+with open("../netguardia_inference.json", "w", encoding="utf-8") as f:
     json.dump(inference_config, f, indent=2, ensure_ascii=False)
 
 print("✅ 已儲存: netguardia_inference.json (精簡版)")
@@ -293,12 +275,14 @@ for i, col in enumerate(scaler_params["feature_names"]):
     if col in clip_params_json:
         test_input[0, i] = np.clip(
             test_input[0, i],
-            clip_params_json[col]['lower'],
-            clip_params_json[col]['upper']
+            clip_params_json[col]["lower"],
+            clip_params_json[col]["upper"],
         )
 
 # 標準化
-test_input_scaled = (test_input - np.array(scaler_params["mean"])) / np.array(scaler_params["std"])
+test_input_scaled = (test_input - np.array(scaler_params["mean"])) / np.array(
+    scaler_params["std"]
+)
 test_input_scaled = np.clip(test_input_scaled, -5, 5).astype(np.float32)
 
 # 測試 Deep AE
@@ -326,8 +310,9 @@ print(f"   ✅ Confidence: {confidence:.6f}")
 
 # 測試 Ensemble（🔥 使用正確的正規化）
 print("\n4. 測試 Ensemble...")
-ae_score_norm = (ae_mse - ae_normalization_json['min']) / \
-                (ae_normalization_json['max'] - ae_normalization_json['min'] + 1e-10)
+ae_score_norm = (ae_mse - ae_normalization_json["min"]) / (
+    ae_normalization_json["max"] - ae_normalization_json["min"] + 1e-10
+)
 ae_score_norm = np.clip(ae_score_norm, 0, 1)  # 裁剪到 [0, 1]
 rf_score_norm = rf_proba
 
@@ -351,7 +336,9 @@ print(f"   ✅ Threshold: {ensemble_params['threshold']:.6f}")
 print(f"   ✅ Is Anomaly: {is_anomaly}")
 
 if is_anomaly:
-    print(f"   🚨 預測為攻擊: {le.classes_[predicted_class]} (信心度: {confidence:.2%})")
+    print(
+        f"   🚨 預測為攻擊: {le.classes_[predicted_class]} (信心度: {confidence:.2%})"
+    )
 else:
     print(f"   ✅ 預測為正常流量")
 
@@ -375,7 +362,9 @@ print("\n📊 模型資訊:")
 print(f"  Deep AE: {input_dim} 維 → {config.get('encoding_dim', 16)} 維 bottleneck")
 print(f"  Random Forest: {rf.n_estimators} 棵樹")
 print(f"  MLP: {len(le.classes_)} 個攻擊類別")
-print(f"  Ensemble: {ensemble_params['strategy_name']} (threshold={ensemble_params['threshold']:.4f})")
+print(
+    f"  Ensemble: {ensemble_params['strategy_name']} (threshold={ensemble_params['threshold']:.4f})"
+)
 
 print("\n🎯 性能指標:")
 print(f"  TPR: {ensemble_params['tpr']:.2%}")

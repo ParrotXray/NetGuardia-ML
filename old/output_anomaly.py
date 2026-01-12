@@ -16,22 +16,24 @@ print("=" * 60)
 print("\n📂 Step 1: 載入資料集...")
 
 file_paths = [
-    './csv/Monday-WorkingHours.pcap_ISCX.csv',
-    './csv/Tuesday-WorkingHours.pcap_ISCX.csv',
-    './csv/Wednesday-workingHours.pcap_ISCX.csv',
-    './csv/Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv',
-    './csv/Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv',
-    './csv/Friday-WorkingHours-Morning.pcap_ISCX.csv',
-    './csv/Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv',
-    './csv/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv',
-    './csv/FTP-BruteForce.csv'
+    "./csv/Monday-WorkingHours.pcap_ISCX.csv",
+    "./csv/Tuesday-WorkingHours.pcap_ISCX.csv",
+    "./csv/Wednesday-workingHours.pcap_ISCX.csv",
+    "./csv/Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv",
+    "./csv/Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv",
+    "./csv/Friday-WorkingHours-Morning.pcap_ISCX.csv",
+    "./csv/Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv",
+    "./csv/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv",
+    "./csv/FTP-BruteForce.csv",
 ]
 
 datasets = []
 for filename in os.listdir("../csv"):
     try:
         print(f"  載入: {filename}")
-        df = pd.read_csv(f"./csv/{filename}", encoding='utf-8', encoding_errors='replace')
+        df = pd.read_csv(
+            f"./csv/{filename}", encoding="utf-8", encoding_errors="replace"
+        )
         df.columns = df.columns.str.strip()  # 清理欄位名稱
         datasets.append(df)
         print(f"       ✓ 形狀: {df.shape}, 標籤: {df['Label'].nunique()} 類")
@@ -50,7 +52,7 @@ print("\n🔗 Step 2: 合併資料集...")
 df_combined = pd.concat(datasets, ignore_index=True)
 
 # 保留標籤
-labels = df_combined['Label'].str.replace('�', '-', regex=False).copy()
+labels = df_combined["Label"].str.replace("�", "-", regex=False).copy()
 
 print(f"✅ 合併後資料: {df_combined.shape}")
 print(f"\n📊 標籤分布:")
@@ -62,8 +64,8 @@ print(labels.value_counts())
 print("\n🛠️  Step 3: 特徵準備...")
 
 # 移除非特徵欄位
-non_feature_cols = ['Flow ID', 'Source IP', 'Destination IP', 'Timestamp', 'Label']
-df_features = df_combined.drop(columns=non_feature_cols, errors='ignore')
+non_feature_cols = ["Flow ID", "Source IP", "Destination IP", "Timestamp", "Label"]
+df_features = df_combined.drop(columns=non_feature_cols, errors="ignore")
 
 # 提取數值特徵
 X = df_features.select_dtypes(include=[np.number])
@@ -83,10 +85,7 @@ print("\n🔍 Step 4: IsolationForest 異常偵測...")
 
 contamination_rate = 0.05  # 預期異常比例
 clf = IsolationForest(
-    contamination=contamination_rate,
-    random_state=42,
-    n_jobs=-1,
-    verbose=1
+    contamination=contamination_rate, random_state=42, n_jobs=-1, verbose=1
 )
 
 print(f"  訓練 IsolationForest (contamination={contamination_rate})...")
@@ -109,8 +108,8 @@ print("\n💾 Step 5: 儲存處理後資料...")
 
 # 組合結果
 output = X.copy()
-output['anomaly_if'] = anomaly_if
-output['Label'] = labels.values
+output["anomaly_if"] = anomaly_if
+output["Label"] = labels.values
 
 # 儲存主要輸出檔案
 output_path = "../output_anomaly.csv"
@@ -119,15 +118,16 @@ print(f"  ✅ 已儲存: {output_path}")
 
 # 額外儲存統計資訊
 stats = {
-    'total_samples': len(df_combined),
-    'total_features': X.shape[1],
-    'anomaly_if_count': int(anomaly_count),
-    'anomaly_if_ratio': float(anomaly_ratio),
-    'label_distribution': labels.value_counts().to_dict()
+    "total_samples": len(df_combined),
+    "total_features": X.shape[1],
+    "anomaly_if_count": int(anomaly_count),
+    "anomaly_if_ratio": float(anomaly_ratio),
+    "label_distribution": labels.value_counts().to_dict(),
 }
 
 import json
-with open('../preprocessing_stats.json', 'w', encoding='utf-8') as f:
+
+with open("../preprocessing_stats.json", "w", encoding="utf-8") as f:
     json.dump(stats, f, indent=2, ensure_ascii=False)
 print(f"  ✅ 已儲存統計: preprocessing_stats.json")
 

@@ -6,6 +6,7 @@ Deep Autoencoder + Ensemble for Network Intrusion Detection
 3. Ensemble - 結合兩者的優勢
 4. 🔥 記錄 AE 正規化參數供推論使用
 """
+
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
@@ -30,7 +31,7 @@ print(f"GPU: {tf.config.list_physical_devices('GPU')}")
 print("\n📂 載入資料...")
 df = pd.read_csv("../output_anomaly.csv")
 df.columns = df.columns.str.strip()
-labels = df['Label'].copy()
+labels = df["Label"].copy()
 
 print(f"✅ 總樣本: {len(df):,}")
 print(f"   BENIGN: {(labels == 'BENIGN').sum():,}")
@@ -39,12 +40,12 @@ print(f"   Attack: {(labels != 'BENIGN').sum():,}")
 # === 2️⃣ 準備資料 ===
 print("\n🎯 準備資料...")
 
-exclude_cols = ['Label', 'anomaly_if']
-X_all = df.drop(columns=exclude_cols, errors='ignore')
+exclude_cols = ["Label", "anomaly_if"]
+X_all = df.drop(columns=exclude_cols, errors="ignore")
 X_all = X_all.select_dtypes(include=[np.number])
 
 # 標籤: 0=BENIGN, 1=Attack
-y_all = (labels != 'BENIGN').astype(int)
+y_all = (labels != "BENIGN").astype(int)
 
 # 分割訓練集 (只用 BENIGN) 和測試集
 X_benign = X_all[y_all == 0].copy()
@@ -69,7 +70,7 @@ for col in X_benign.columns:
     upper = X_benign[col].quantile(0.995)
     X_benign[col] = np.clip(X_benign[col], lower, upper)
     X_test_all[col] = np.clip(X_test_all[col], lower, upper)
-    clip_params[col] = {'lower': lower, 'upper': upper}
+    clip_params[col] = {"lower": lower, "upper": upper}
 
 # 標準化
 scaler = StandardScaler()
@@ -96,70 +97,71 @@ print(f"架構: {input_dim} → 1024 → 512 → 256 → 128 → 64 → {encodin
 inputs = layers.Input(shape=(input_dim,))
 
 # Layer 1
-x = layers.Dense(1024, activation='relu')(inputs)
+x = layers.Dense(1024, activation="relu")(inputs)
 x = layers.BatchNormalization()(x)
 x = layers.Dropout(0.3)(x)
 
 # Layer 2
-x = layers.Dense(512, activation='relu')(x)
+x = layers.Dense(512, activation="relu")(x)
 x = layers.BatchNormalization()(x)
 x = layers.Dropout(0.25)(x)
 
 # Layer 3
-x = layers.Dense(256, activation='relu')(x)
+x = layers.Dense(256, activation="relu")(x)
 x = layers.BatchNormalization()(x)
 x = layers.Dropout(0.2)(x)
 
 # Layer 4
-x = layers.Dense(128, activation='relu')(x)
+x = layers.Dense(128, activation="relu")(x)
 x = layers.BatchNormalization()(x)
 x = layers.Dropout(0.15)(x)
 
 # Layer 5
-x = layers.Dense(64, activation='relu')(x)
+x = layers.Dense(64, activation="relu")(x)
 x = layers.BatchNormalization()(x)
 
 # Bottleneck (Layer 6) - 加入 L2 正則化
-encoded = layers.Dense(encoding_dim, activation='relu',
-                       kernel_regularizer=regularizers.l2(0.0001),
-                       name='bottleneck')(x)
+encoded = layers.Dense(
+    encoding_dim,
+    activation="relu",
+    kernel_regularizer=regularizers.l2(0.0001),
+    name="bottleneck",
+)(x)
 
 # Decoder (對稱結構)
 # Layer 1
-x = layers.Dense(64, activation='relu')(encoded)
+x = layers.Dense(64, activation="relu")(encoded)
 x = layers.BatchNormalization()(x)
 x = layers.Dropout(0.15)(x)
 
 # Layer 2
-x = layers.Dense(128, activation='relu')(x)
+x = layers.Dense(128, activation="relu")(x)
 x = layers.BatchNormalization()(x)
 x = layers.Dropout(0.2)(x)
 
 # Layer 3
-x = layers.Dense(256, activation='relu')(x)
+x = layers.Dense(256, activation="relu")(x)
 x = layers.BatchNormalization()(x)
 x = layers.Dropout(0.25)(x)
 
 # Layer 4
-x = layers.Dense(512, activation='relu')(x)
+x = layers.Dense(512, activation="relu")(x)
 x = layers.BatchNormalization()(x)
 x = layers.Dropout(0.3)(x)
 
 # Layer 5
-x = layers.Dense(1024, activation='relu')(x)
+x = layers.Dense(1024, activation="relu")(x)
 x = layers.BatchNormalization()(x)
 
 # Output
-decoded = layers.Dense(input_dim, activation='linear')(x)
+decoded = layers.Dense(input_dim, activation="linear")(x)
 
 # 建立模型
-deep_ae = models.Model(inputs, decoded, name='deep_autoencoder')
+deep_ae = models.Model(inputs, decoded, name="deep_autoencoder")
 
 # 編譯
 deep_ae.compile(
-    optimizer=Adam(learning_rate=0.001, clipnorm=1.0),
-    loss='mse',
-    metrics=['mae']
+    optimizer=Adam(learning_rate=0.001, clipnorm=1.0), loss="mse", metrics=["mae"]
 )
 
 print(f"\n📊 模型架構:")
@@ -174,30 +176,24 @@ print("=" * 60)
 
 callbacks = [
     EarlyStopping(
-        monitor='val_loss',
-        patience=20,
-        restore_best_weights=True,
-        verbose=1
+        monitor="val_loss", patience=20, restore_best_weights=True, verbose=1
     ),
     ReduceLROnPlateau(
-        monitor='val_loss',
-        factor=0.5,
-        patience=7,
-        min_lr=1e-7,
-        verbose=1
-    )
+        monitor="val_loss", factor=0.5, patience=7, min_lr=1e-7, verbose=1
+    ),
 ]
 
 history = deep_ae.fit(
-    X_benign_scaled, X_benign_scaled,
+    X_benign_scaled,
+    X_benign_scaled,
     epochs=100,
     batch_size=1024,
     validation_split=0.15,
     callbacks=callbacks,
-    verbose=1
+    verbose=1,
 )
 
-epochs = len(history.history['loss'])
+epochs = len(history.history["loss"])
 print(f"\n✅ 完成: {epochs} epochs")
 print(f"   Final Train Loss: {history.history['loss'][-1]:.6f}")
 print(f"   Final Val Loss: {history.history['val_loss'][-1]:.6f}")
@@ -213,14 +209,14 @@ ae_mse_benign = np.mean(np.square(X_benign_scaled - ae_recon_benign), axis=1)
 
 # 計算統計量
 ae_normalization_params = {
-    'min': float(ae_mse_benign.min()),
-    'max': float(ae_mse_benign.max()),
-    'mean': float(ae_mse_benign.mean()),
-    'std': float(ae_mse_benign.std()),
-    'median': float(np.median(ae_mse_benign)),
-    'p90': float(np.percentile(ae_mse_benign, 90)),
-    'p95': float(np.percentile(ae_mse_benign, 95)),
-    'p99': float(np.percentile(ae_mse_benign, 99))
+    "min": float(ae_mse_benign.min()),
+    "max": float(ae_mse_benign.max()),
+    "mean": float(ae_mse_benign.mean()),
+    "std": float(ae_mse_benign.std()),
+    "median": float(np.median(ae_mse_benign)),
+    "p90": float(np.percentile(ae_mse_benign, 90)),
+    "p95": float(np.percentile(ae_mse_benign, 95)),
+    "p99": float(np.percentile(ae_mse_benign, 99)),
 }
 
 print(f"✅ AE MSE 統計 (BENIGN 訓練集):")
@@ -246,8 +242,12 @@ ae_mse_benign_test = ae_mse[y_test == 0]
 ae_mse_attack_test = ae_mse[y_test == 1]
 
 print(f"\nAE MSE 統計 (測試集):")
-print(f"  BENIGN: Mean={ae_mse_benign_test.mean():.6f}, Median={np.median(ae_mse_benign_test):.6f}")
-print(f"  Attack: Mean={ae_mse_attack_test.mean():.6f}, Median={np.median(ae_mse_attack_test):.6f}")
+print(
+    f"  BENIGN: Mean={ae_mse_benign_test.mean():.6f}, Median={np.median(ae_mse_benign_test):.6f}"
+)
+print(
+    f"  Attack: Mean={ae_mse_attack_test.mean():.6f}, Median={np.median(ae_mse_attack_test):.6f}"
+)
 print(f"  分離度: {ae_mse_attack_test.mean() / ae_mse_benign_test.mean():.2f}x")
 
 # === 7️⃣ 訓練 Random Forest ===
@@ -273,7 +273,9 @@ np.random.shuffle(train_indices)
 X_rf_train = X_test_scaled[train_indices]
 y_rf_train = y_test[train_indices]
 
-print(f"RF 訓練資料: {len(X_rf_train):,} (BENIGN: {n_samples:,}, Attack: {n_samples:,})")
+print(
+    f"RF 訓練資料: {len(X_rf_train):,} (BENIGN: {n_samples:,}, Attack: {n_samples:,})"
+)
 
 # 訓練 RF
 rf = RandomForestClassifier(
@@ -281,10 +283,10 @@ rf = RandomForestClassifier(
     max_depth=20,
     min_samples_split=10,
     min_samples_leaf=5,
-    max_features='sqrt',
+    max_features="sqrt",
     n_jobs=-1,
     random_state=42,
-    verbose=1
+    verbose=1,
 )
 
 print("訓練 Random Forest...")
@@ -302,8 +304,9 @@ print("🔀 Ensemble 策略")
 print("=" * 60)
 
 # 🔥 使用訓練集的 min/max 正規化
-ae_score_norm = (ae_mse - ae_normalization_params['min']) / \
-                (ae_normalization_params['max'] - ae_normalization_params['min'] + 1e-10)
+ae_score_norm = (ae_mse - ae_normalization_params["min"]) / (
+    ae_normalization_params["max"] - ae_normalization_params["min"] + 1e-10
+)
 ae_score_norm = np.clip(ae_score_norm, 0, 1)  # 裁剪到 [0, 1]
 
 rf_score_norm = rf_proba
@@ -322,19 +325,21 @@ for ae_w in [0.3, 0.4, 0.5, 0.6, 0.7]:
     strategies[name] = ae_w * ae_score_norm + rf_w * rf_score_norm
 
 # 策略 2: Max
-strategies['Max'] = np.maximum(ae_score_norm, rf_score_norm)
+strategies["Max"] = np.maximum(ae_score_norm, rf_score_norm)
 
 # 策略 3: Min
-strategies['Min'] = np.minimum(ae_score_norm, rf_score_norm)
+strategies["Min"] = np.minimum(ae_score_norm, rf_score_norm)
 
 # 策略 4: Product
-strategies['Product'] = ae_score_norm * rf_score_norm
+strategies["Product"] = ae_score_norm * rf_score_norm
 
 # 策略 5: Average
-strategies['Average'] = (ae_score_norm + rf_score_norm) / 2
+strategies["Average"] = (ae_score_norm + rf_score_norm) / 2
 
 # === 9️⃣ 評估 ===
-print(f"\n{'Strategy':<12} {'Threshold':>10} {'TPR':>7} {'FPR':>7} {'Prec':>7} {'F1':>7}")
+print(
+    f"\n{'Strategy':<12} {'Threshold':>10} {'TPR':>7} {'FPR':>7} {'Prec':>7} {'F1':>7}"
+)
 print("-" * 60)
 
 results = []
@@ -363,23 +368,30 @@ for name, score in strategies.items():
         if f1 > best_f1 and prec > 0.5:  # 確保 precision > 0.5
             best_f1 = f1
             best_threshold = threshold
-            best_metrics = {'tp': tp, 'fp': fp, 'fn': fn, 'tn': tn,
-                          'tpr': tpr, 'fpr': fpr, 'precision': prec, 'f1': f1}
+            best_metrics = {
+                "tp": tp,
+                "fp": fp,
+                "fn": fn,
+                "tn": tn,
+                "tpr": tpr,
+                "fpr": fpr,
+                "precision": prec,
+                "f1": f1,
+            }
 
     if best_metrics:
-        print(f"{name:<12} {best_threshold:>10.4f} {best_metrics['tpr']:>6.1%} "
-              f"{best_metrics['fpr']:>6.1%} {best_metrics['precision']:>6.2f} "
-              f"{best_metrics['f1']:>6.3f}")
+        print(
+            f"{name:<12} {best_threshold:>10.4f} {best_metrics['tpr']:>6.1%} "
+            f"{best_metrics['fpr']:>6.1%} {best_metrics['precision']:>6.2f} "
+            f"{best_metrics['f1']:>6.3f}"
+        )
 
-        results.append({
-            'name': name,
-            'score': score,
-            'threshold': best_threshold,
-            **best_metrics
-        })
+        results.append(
+            {"name": name, "score": score, "threshold": best_threshold, **best_metrics}
+        )
 
 # 找最佳策略
-best = max(results, key=lambda x: x['f1'])
+best = max(results, key=lambda x: x["f1"])
 
 print(f"\n🏆 最佳策略: {best['name']}")
 print(f"   Threshold: {best['threshold']:.4f}")
@@ -390,37 +402,40 @@ print(f"   F1: {best['f1']:.3f}")
 
 # === 各攻擊類型 ===
 print("\n🎯 各攻擊類型偵測率:")
-for at in sorted(labels[labels != 'BENIGN'].unique()):
-    mask = (labels == at)
-    detected = (best['score'][mask] > best['threshold']).sum()
+for at in sorted(labels[labels != "BENIGN"].unique()):
+    mask = labels == at
+    detected = (best["score"][mask] > best["threshold"]).sum()
     total = mask.sum()
     rate = detected / total if total > 0 else 0
-    status = '✅' if rate > 0.5 else '⚠️' if rate > 0.2 else '❌'
+    status = "✅" if rate > 0.5 else "⚠️" if rate > 0.2 else "❌"
     print(f"{status} {at[:30]:<30} {detected:>6}/{total:<6} ({rate:>6.1%})")
 
 # === 🔥 儲存（加入 AE 正規化參數）===
 print("\n💾 儲存...")
 
 output = X_all.copy()
-output['deep_ae_mse'] = ae_mse
-output['rf_proba'] = rf_proba
-output['ensemble_score'] = best['score']
-output['ensemble_anomaly'] = (best['score'] > best['threshold']).astype(int)
-output['Label'] = labels.values
+output["deep_ae_mse"] = ae_mse
+output["rf_proba"] = rf_proba
+output["ensemble_score"] = best["score"]
+output["ensemble_anomaly"] = (best["score"] > best["threshold"]).astype(int)
+output["Label"] = labels.values
 
 output.to_csv("output_deep_ae_ensemble.csv", index=False)
 print(f"✅ output_deep_ae_ensemble.csv")
 
 deep_ae.save("deep_autoencoder.keras")
 joblib.dump(rf, "../random_forest.pkl")
-joblib.dump({
-    'scaler': scaler,
-    'clip_params': clip_params,
-    'best': best,
-    'results': results,
-    'encoding_dim': encoding_dim,
-    'ae_normalization': ae_normalization_params  # 🔥 新增
-}, "../deep_ae_ensemble_config.pkl")
+joblib.dump(
+    {
+        "scaler": scaler,
+        "clip_params": clip_params,
+        "best": best,
+        "results": results,
+        "encoding_dim": encoding_dim,
+        "ae_normalization": ae_normalization_params,  # 🔥 新增
+    },
+    "../deep_ae_ensemble_config.pkl",
+)
 print(f"✅ deep_autoencoder.keras, random_forest.pkl, deep_ae_ensemble_config.pkl")
 
 print(f"\n📊 配置檔包含:")
@@ -436,77 +451,107 @@ fig, axes = plt.subplots(2, 3, figsize=(18, 10))
 
 # 1. 訓練曲線
 ax = axes[0, 0]
-ax.plot(history.history['loss'], label='Train', linewidth=2)
-ax.plot(history.history['val_loss'], label='Val', linewidth=2)
-ax.set_xlabel('Epoch')
-ax.set_ylabel('Loss')
-ax.set_title('Deep AE Training History')
+ax.plot(history.history["loss"], label="Train", linewidth=2)
+ax.plot(history.history["val_loss"], label="Val", linewidth=2)
+ax.set_xlabel("Epoch")
+ax.set_ylabel("Loss")
+ax.set_title("Deep AE Training History")
 ax.legend()
 ax.grid(alpha=0.3)
 
 # 2. 分數分佈
 ax = axes[0, 1]
 bins = 50
-ax.hist(best['score'][y_test == 0], bins=bins, alpha=0.7, label='BENIGN', color='green', density=True)
-ax.hist(best['score'][y_test == 1], bins=bins, alpha=0.7, label='Attack', color='red', density=True)
-ax.axvline(best['threshold'], color='black', linestyle='--', linewidth=2, label='Threshold')
-ax.set_xlabel('Ensemble Score')
-ax.set_title('Score Distribution')
+ax.hist(
+    best["score"][y_test == 0],
+    bins=bins,
+    alpha=0.7,
+    label="BENIGN",
+    color="green",
+    density=True,
+)
+ax.hist(
+    best["score"][y_test == 1],
+    bins=bins,
+    alpha=0.7,
+    label="Attack",
+    color="red",
+    density=True,
+)
+ax.axvline(
+    best["threshold"], color="black", linestyle="--", linewidth=2, label="Threshold"
+)
+ax.set_xlabel("Ensemble Score")
+ax.set_title("Score Distribution")
 ax.legend()
 ax.grid(alpha=0.3)
 
 # 3. 策略比較
 ax = axes[0, 2]
-top_strategies = sorted(results, key=lambda x: x['f1'], reverse=True)[:8]
-names = [r['name'] for r in top_strategies]
-f1s = [r['f1'] for r in top_strategies]
-colors = ['gold' if r['name'] == best['name'] else 'steelblue' for r in top_strategies]
+top_strategies = sorted(results, key=lambda x: x["f1"], reverse=True)[:8]
+names = [r["name"] for r in top_strategies]
+f1s = [r["f1"] for r in top_strategies]
+colors = ["gold" if r["name"] == best["name"] else "steelblue" for r in top_strategies]
 ax.barh(names, f1s, color=colors)
-ax.set_xlabel('F1-Score')
-ax.set_title('Ensemble Strategies')
-ax.grid(alpha=0.3, axis='x')
+ax.set_xlabel("F1-Score")
+ax.set_title("Ensemble Strategies")
+ax.grid(alpha=0.3, axis="x")
 
 # 4. 混淆矩陣
 ax = axes[1, 0]
-cm = np.array([[best['tn'], best['fp']], [best['fn'], best['tp']]])
-im = ax.imshow(cm, cmap='Blues')
+cm = np.array([[best["tn"], best["fp"]], [best["fn"], best["tp"]]])
+im = ax.imshow(cm, cmap="Blues")
 for i in range(2):
     for j in range(2):
         text = f"{cm[i,j]:,}\n({cm[i,j]/cm.sum():.1%})"
-        color = 'white' if cm[i,j] > cm.max()/2 else 'black'
-        ax.text(j, i, text, ha='center', va='center', color=color, fontweight='bold', fontsize=10)
-ax.set_xticks([0,1])
-ax.set_yticks([0,1])
-ax.set_xticklabels(['Normal', 'Attack'])
-ax.set_yticklabels(['Normal', 'Attack'])
+        color = "white" if cm[i, j] > cm.max() / 2 else "black"
+        ax.text(
+            j,
+            i,
+            text,
+            ha="center",
+            va="center",
+            color=color,
+            fontweight="bold",
+            fontsize=10,
+        )
+ax.set_xticks([0, 1])
+ax.set_yticks([0, 1])
+ax.set_xticklabels(["Normal", "Attack"])
+ax.set_yticklabels(["Normal", "Attack"])
 ax.set_title(f'Confusion Matrix ({best["name"]})')
 
 # 5. AE vs RF 分數比較
 ax = axes[1, 1]
 sample_size = min(10000, len(ae_score_norm))
 sample_idx = np.random.choice(len(ae_score_norm), sample_size, replace=False)
-colors_scatter = ['red' if y_test.iloc[i] == 1 else 'green' for i in sample_idx]
-ax.scatter(ae_score_norm[sample_idx], rf_score_norm[sample_idx],
-          c=colors_scatter, alpha=0.3, s=1)
-ax.plot([0, 1], [0, 1], 'k--', linewidth=1)
-ax.set_xlabel('Deep AE Score (normalized)')
-ax.set_ylabel('RF Score (probability)')
-ax.set_title('AE vs RF Scores')
+colors_scatter = ["red" if y_test.iloc[i] == 1 else "green" for i in sample_idx]
+ax.scatter(
+    ae_score_norm[sample_idx],
+    rf_score_norm[sample_idx],
+    c=colors_scatter,
+    alpha=0.3,
+    s=1,
+)
+ax.plot([0, 1], [0, 1], "k--", linewidth=1)
+ax.set_xlabel("Deep AE Score (normalized)")
+ax.set_ylabel("RF Score (probability)")
+ax.set_title("AE vs RF Scores")
 ax.grid(alpha=0.3)
 
 # 6. 特徵重要性 (RF)
 ax = axes[1, 2]
 feature_importance = rf.feature_importances_
 top_10_idx = np.argsort(feature_importance)[-10:]
-ax.barh(range(10), feature_importance[top_10_idx], color='teal')
+ax.barh(range(10), feature_importance[top_10_idx], color="teal")
 ax.set_yticks(range(10))
-ax.set_yticklabels([f'F{i}' for i in top_10_idx], fontsize=8)
-ax.set_xlabel('Importance')
-ax.set_title('Top 10 Feature Importance (RF)')
-ax.grid(alpha=0.3, axis='x')
+ax.set_yticklabels([f"F{i}" for i in top_10_idx], fontsize=8)
+ax.set_xlabel("Importance")
+ax.set_title("Top 10 Feature Importance (RF)")
+ax.grid(alpha=0.3, axis="x")
 
 plt.tight_layout()
-plt.savefig('deep_ae_ensemble_analysis.png', dpi=150, bbox_inches='tight')
+plt.savefig("deep_ae_ensemble_analysis.png", dpi=150, bbox_inches="tight")
 print(f"✅ deep_ae_ensemble_analysis.png")
 
 print("\n" + "=" * 60)
@@ -516,5 +561,7 @@ print(f"🎯 Deep AE: 6 layers, Bottleneck={encoding_dim}")
 print(f"🌲 RF: {rf.n_estimators} trees")
 print(f"🏆 Best: {best['name']}")
 print(f"📊 TPR: {best['tpr']:.1%}, F1: {best['f1']:.3f}")
-print(f"🔥 AE 正規化: Min={ae_normalization_params['min']:.6f}, Max={ae_normalization_params['max']:.6f}")
+print(
+    f"🔥 AE 正規化: Min={ae_normalization_params['min']:.6f}, Max={ae_normalization_params['max']:.6f}"
+)
 print("=" * 60)

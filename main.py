@@ -1,7 +1,7 @@
 from DataPreprocessing import PreprocessingConfig, DataPreprocessing
 from Logger import Logger
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     log = Logger("Main")
 
     log.info("Start processing data...")
