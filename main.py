@@ -1,4 +1,5 @@
 from DataPreprocessing import PreprocessingConfig, DataPreprocessing
+from DeepAutoencoder import DeepAutoencoder
 from Logger import Logger
 
 if __name__ == "__main__":
@@ -12,3 +13,7 @@ if __name__ == "__main__":
     dp.feature_preparation()
     dp.anomaly_detection()
     dp.output_result("./save")
+
+    log.info("Start Deep Autoencoder...")
+    da = DeepAutoencoder()
+    da.load_dataset("./save/output_anomaly.csv")
