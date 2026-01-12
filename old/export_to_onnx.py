@@ -205,7 +205,7 @@ attack_labels = {str(i): label for i, label in enumerate(le.classes_)}
 config_json = {
     "version": "1.0.0",
     "created_at": pd.Timestamp.now().isoformat(),
-    "models": {
+    "model": {
         "deep_autoencoder": {
             "file": "deep_autoencoder.onnx",
             "input_dim": int(input_dim),
