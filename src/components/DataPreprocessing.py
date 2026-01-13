@@ -139,7 +139,7 @@ class DataPreprocessing:
         output["anomaly_if"] = self.detection_result["anomaly_if"]
         output["Label"] = self.labels.values
 
-        output_path = Path(output_dir) / self.config.output_csv_name
+        output_path = Path(output_dir) / f"{self.config.output_csv_name}.csv"
         output.to_csv(output_path, index=False)
         self.log.info(f"Stored: {output_path}")
 
@@ -152,11 +152,11 @@ class DataPreprocessing:
             "label_distribution": self.labels.value_counts().to_dict(),
         }
 
-        stats_path = Path(output_dir) / self.config.output_stats_name
+        stats_path = Path(output_dir) / f"{self.config.output_stats_name}.json"
         with open(stats_path, "w", encoding="utf-8") as f:
             ujson.dump(stats, f, indent=2, ensure_ascii=False)
         self.log.info(f"Statistics stored: {stats_path}")
 
-        model_path = Path(output_dir) / self.config.output_model_name
+        model_path = Path(output_dir) / f"{self.config.output_model_name}.joblib"
         joblib.dump(self.clf, model_path)
         self.log.info(f"Model stored: {model_path}")

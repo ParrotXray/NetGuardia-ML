@@ -1,5 +1,5 @@
-from method.DataPreprocessing import DataPreprocessing
-from method.DeepAutoencoder import DeepAutoencoder
+from components.DataPreprocessing import DataPreprocessing
+from components.DeepAutoencoder import DeepAutoencoder
 from model.PreprocessingConfig import PreprocessingConfig
 from model.DeepAutoencoderConfig import DeepAutoencoderConfig
 from utils.Logger import Logger
@@ -23,3 +23,13 @@ if __name__ == "__main__":
     da.load_data("../save/output_anomaly.csv")
     da.prepare_data()
     da.preprocess_data()
+    da.build_autoencoder()
+    da.train_autoencoder()
+    da.calculate_ae_normalization()
+    da.predict_autoencoder()
+    da.train_random_forest()
+    da.create_ensemble_strategies()
+    da.evaluate_strategies()
+    da.evaluate_attack_types()
+    da.save_results("../save")
+    da.generate_visualizations("../save")

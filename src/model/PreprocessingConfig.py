@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+
 @dataclass
 class PreprocessingConfig:
     contamination_rate: float = 0.05
@@ -11,6 +12,6 @@ class PreprocessingConfig:
     clip_max: float = 1e9
     fill_value: float = 0.0
 
-    output_csv_name: str = "output_anomaly.csv"
-    output_stats_name: str = "preprocessing_stats.json"
-    output_model_name: str = "isolation_forest_model.joblib"
+    output_csv_name: str = "output_anomaly"
+    output_stats_name: str = "preprocessing_stats"
+    output_model_name: str = "isolation_forest_model"
