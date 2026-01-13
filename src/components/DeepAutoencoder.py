@@ -203,9 +203,9 @@ class DeepAutoencoder:
         final_train_loss = self.training_history.history["loss"][-1]
         final_val_loss = self.training_history.history["val_loss"][-1]
 
-        self.log.info(f"Training completed: {epochs} epochs")
-        self.log.info(f"Final train loss: {final_train_loss:.6f}")
-        self.log.info(f"Final validation loss: {final_val_loss:.6f}")
+        print(f"Training completed: {epochs} epochs")
+        print(f"Final train loss: {final_train_loss:.6f}")
+        print(f"Final validation loss: {final_val_loss:.6f}")
 
     def calculate_ae_normalization(self) -> None:
         self.log.info("Calculating AE normalization parameters...")
@@ -228,9 +228,10 @@ class DeepAutoencoder:
             "p99": float(np.percentile(ae_mse_benign, 99)),
         }
 
+        print(f"AE MSE statistics (BENIGN training set):")
         for key, value in self.ae_normalization_params.items():
-            self.log.info(
-                f"AE MSE statistics (BENIGN training set): {key.upper()}: {value:.6f}"
+            print(
+                f"{key.upper()}: {value:.6f}"
             )
 
     def predict_autoencoder(self) -> None:
@@ -248,13 +249,14 @@ class DeepAutoencoder:
 
         separation = ae_mse_attack.mean() / ae_mse_benign.mean()
 
+        print(f"AE MSE statistics (test set):")
         self.log.info(
-            f"AE MSE statistics (test set): BENIGN: Mean={ae_mse_benign.mean():.6f}, Median={np.median(ae_mse_benign):.6f}"
+            f"BENIGN: Mean={ae_mse_benign.mean():.6f}, Median={np.median(ae_mse_benign):.6f}"
         )
         self.log.info(
-            f"AE MSE statistics (test set): Attack: Mean={ae_mse_attack.mean():.6f}, Median={np.median(ae_mse_attack):.6f}"
+            f"Attack: Mean={ae_mse_attack.mean():.6f}, Median={np.median(ae_mse_attack):.6f}"
         )
-        self.log.info(f"AE MSE statistics (test set): Separation: {separation:.2f}x")
+        self.log.info(f"Separation: {separation:.2f}x")
 
     def train_random_forest(self) -> None:
         self.log.info("Training Random Forest...")
@@ -344,8 +346,8 @@ class DeepAutoencoder:
         self.log.info("Evaluating strategies...")
 
         header = f"{'Strategy':<12} {'Threshold':>10} {'TPR':>7} {'FPR':>7} {'Prec':>7} {'F1':>7}"
-        self.log.info(header)
-        self.log.info("-" * 60)
+        print(header)
+        print("-" * 60)
 
         self.strategy_results = []
 
@@ -391,7 +393,7 @@ class DeepAutoencoder:
                     f"{best_metrics['fpr']:>6.1%} {best_metrics['precision']:>6.2f} "
                     f"{best_metrics['f1']:>6.3f}"
                 )
-                self.log.info(result_line)
+                print(result_line)
 
                 self.strategy_results.append(
                     {
@@ -404,12 +406,12 @@ class DeepAutoencoder:
 
         self.best_strategy = max(self.strategy_results, key=lambda x: x["f1"])
 
-        self.log.info(f"Best strategy: {self.best_strategy['name']}")
-        self.log.info(f"Threshold: {self.best_strategy['threshold']:.4f}")
-        self.log.info(f"TPR: {self.best_strategy['tpr']:.2%}")
-        self.log.info(f"FPR: {self.best_strategy['fpr']:.2%}")
-        self.log.info(f"Precision: {self.best_strategy['precision']:.3f}")
-        self.log.info(f"F1: {self.best_strategy['f1']:.3f}")
+        print(f"Best strategy: {self.best_strategy['name']}")
+        print(f"Threshold: {self.best_strategy['threshold']:.4f}")
+        print(f"TPR: {self.best_strategy['tpr']:.2%}")
+        print(f"FPR: {self.best_strategy['fpr']:.2%}")
+        print(f"Precision: {self.best_strategy['precision']:.3f}")
+        print(f"F1: {self.best_strategy['f1']:.3f}")
 
     def evaluate_attack_types(self) -> None:
         self.log.info("Attack type detection rates...")
@@ -423,7 +425,7 @@ class DeepAutoencoder:
             rate = detected / total if total > 0 else 0
 
             status = "GOOD" if rate > 0.5 else "WARN" if rate > 0.2 else "POOR"
-            self.log.info(
+            print(
                 f"[{status}] {attack_type[:30]:<30} {detected:>6}/{total:<6} ({rate:>6.1%})"
             )
 
