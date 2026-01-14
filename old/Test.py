@@ -71,8 +71,8 @@ print("\n📂 讀取測試資料...")
 
 # 嘗試不同的測試檔案
 test_files = [
-    "./csv/Friday-WorkingHours-Morning.pcap_ISCX.csv",
-    "./FTP-BruteForce.csv",
+    "./raw_data/Friday-WorkingHours-Morning.pcap_ISCX.raw_data",
+    "./FTP-BruteForce.raw_data",
 ]
 
 df = None
@@ -493,8 +493,8 @@ if len(pred_labels) > 0:
     output.loc[is_anomaly == 1, "predicted_attack"] = pred_labels
     output.loc[is_anomaly == 1, "confidence"] = pred_confidence
 
-output.to_csv("test_ensemble_results.csv", index=False)
-print("✅ 已保存: test_ensemble_results.csv")
+output.to_csv("test_ensemble_results.raw_data", index=False)
+print("✅ 已保存: test_ensemble_results.raw_data")
 
 # === 14️⃣ 視覺化 ===
 print("\n📊 生成視覺化...")
@@ -771,6 +771,6 @@ if len(pred_labels) > 0:
 
 print("=" * 60)
 print("\n📁 輸出檔案:")
-print("  - test_ensemble_results.csv")
+print("  - test_ensemble_results.raw_data")
 print("  - test_ensemble_analysis.png")
 print("=" * 60)

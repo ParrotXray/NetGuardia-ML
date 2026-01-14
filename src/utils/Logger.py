@@ -22,11 +22,11 @@ class Logger:
         self.logger.setLevel(self.level)
 
         if not self.logger.handlers:
-            if not os.path.exists("../../logs"):
-                os.makedirs("../../logs", exist_ok=True)
+            if not os.path.exists("./logs"):
+                os.makedirs("./logs", exist_ok=True)
 
             self.file_handler = RotatingFileHandler(
-                os.path.join("../../logs", "bot.log"),
+                os.path.join("./logs", "train.log"),
                 maxBytes=10 * 1024 * 1024,
                 backupCount=5,
                 encoding="utf-8",

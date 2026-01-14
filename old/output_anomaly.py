@@ -16,23 +16,23 @@ print("=" * 60)
 print("\n📂 Step 1: 載入資料集...")
 
 file_paths = [
-    "./csv/Monday-WorkingHours.pcap_ISCX.csv",
-    "./csv/Tuesday-WorkingHours.pcap_ISCX.csv",
-    "./csv/Wednesday-workingHours.pcap_ISCX.csv",
-    "./csv/Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv",
-    "./csv/Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv",
-    "./csv/Friday-WorkingHours-Morning.pcap_ISCX.csv",
-    "./csv/Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv",
-    "./csv/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv",
-    "./csv/FTP-BruteForce.csv",
+    "./raw_data/Monday-WorkingHours.pcap_ISCX.raw_data",
+    "./raw_data/Tuesday-WorkingHours.pcap_ISCX.raw_data",
+    "./raw_data/Wednesday-workingHours.pcap_ISCX.raw_data",
+    "./raw_data/Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.raw_data",
+    "./raw_data/Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.raw_data",
+    "./raw_data/Friday-WorkingHours-Morning.pcap_ISCX.raw_data",
+    "./raw_data/Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.raw_data",
+    "./raw_data/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.raw_data",
+    "./raw_data/FTP-BruteForce.raw_data",
 ]
 
 datasets = []
-for filename in os.listdir("../csv"):
+for filename in os.listdir("../src/raw_data"):
     try:
         print(f"  載入: {filename}")
         df = pd.read_csv(
-            f"./csv/{filename}", encoding="utf-8", encoding_errors="replace"
+            f"./raw_data/{filename}", encoding="utf-8", encoding_errors="replace"
         )
         df.columns = df.columns.str.strip()  # 清理欄位名稱
         datasets.append(df)
@@ -112,7 +112,7 @@ output["anomaly_if"] = anomaly_if
 output["Label"] = labels.values
 
 # 儲存主要輸出檔案
-output_path = "../output_anomaly.csv"
+output_path = "../output_anomaly.raw_data"
 output.to_csv(output_path, index=False)
 print(f"  ✅ 已儲存: {output_path}")
 
@@ -140,6 +140,6 @@ print("\n" + "=" * 60)
 print("✨ 預處理完成!")
 print("=" * 60)
 print("\n📌 下一步:")
-print("  1. 使用 'output_anomaly.csv' 訓練 Autoencoder")
+print("  1. 使用 'output_anomaly.raw_data' 訓練 Autoencoder")
 print("  2. 'anomaly_if' 欄位為 IsolationForest 的參考標記")
 print("  3. 'Label' 欄位為真實標籤,可用於評估")

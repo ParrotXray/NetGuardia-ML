@@ -29,7 +29,7 @@ print(f"GPU: {tf.config.list_physical_devices('GPU')}")
 
 # === 1️⃣ 載入資料 ===
 print("\n📂 載入資料...")
-df = pd.read_csv("../output_anomaly.csv")
+df = pd.read_csv("../output_anomaly.raw_data")
 df.columns = df.columns.str.strip()
 labels = df["Label"].copy()
 
@@ -420,8 +420,8 @@ output["ensemble_score"] = best["score"]
 output["ensemble_anomaly"] = (best["score"] > best["threshold"]).astype(int)
 output["Label"] = labels.values
 
-output.to_csv("output_deep_ae_ensemble.csv", index=False)
-print(f"✅ output_deep_ae_ensemble.csv")
+output.to_csv("output_deep_ae_ensemble.raw_data", index=False)
+print(f"✅ output_deep_ae_ensemble.raw_data")
 
 deep_ae.save("deep_autoencoder.keras")
 joblib.dump(rf, "../random_forest.pkl")

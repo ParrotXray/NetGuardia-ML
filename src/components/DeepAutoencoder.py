@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import tensorflow as tf
 from typing import List, Optional, Dict, Any
@@ -56,9 +58,9 @@ class DeepAutoencoder:
         gpus = tf.config.list_physical_devices("GPU")
         self.log.info(f"GPU: {gpus if gpus else 'No GPU detected'}")
 
-    def load_data(self, file_path: str) -> None:
-        self.log.info(f"Loading data from {file_path}...")
-        self.raw_data = pd.read_csv(file_path)
+    def load_data(self) -> None:
+        self.log.info(f"Loading data from outputs/preprocessing.csv...")
+        self.raw_data = pd.read_csv("./outputs/preprocessing.csv")
         self.raw_data.columns = self.raw_data.columns.str.strip()
         self.labels = self.raw_data["Label"].copy()
 
@@ -230,9 +232,7 @@ class DeepAutoencoder:
 
         print(f"AE MSE statistics (BENIGN training set):")
         for key, value in self.ae_normalization_params.items():
-            print(
-                f"{key.upper()}: {value:.6f}"
-            )
+            print(f"{key.upper()}: {value:.6f}")
 
     def predict_autoencoder(self) -> None:
         self.log.info("Calculating Deep AE anomaly scores...")
@@ -429,8 +429,13 @@ class DeepAutoencoder:
                 f"[{status}] {attack_type[:30]:<30} {detected:>6}/{total:<6} ({rate:>6.1%})"
             )
 
-    def save_results(self, output_dir: str = "..") -> None:
+    def save_results(self) -> None:
         self.log.info("Saving results...")
+
+        if not (os.path.exists("./metadata") or os.path.exists("./artifacts") or os.path.exists("./outputs")):
+            os.makedirs("./metadata", exist_ok=True)
+            os.makedirs("./artifacts", exist_ok=True)
+            os.makedirs("./outputs", exist_ok=True)
 
         output = self.features.copy()
         output["deep_ae_mse"] = self.ae_mse_scores
@@ -441,15 +446,15 @@ class DeepAutoencoder:
         ).astype(int)
         output["Label"] = self.labels.values
 
-        output_path = Path(output_dir) / f"{self.config.output_csv_name}.csv"
+        output_path = Path("outputs") / "deep_ae_ensemble.csv"
         output.to_csv(output_path, index=False)
         self.log.info(f"Saved: {output_path}")
 
-        model_ae_path = Path(output_dir) / f"{self.config.output_model_ae}.keras"
+        model_ae_path = Path("artifacts") / "deep_autoencoder.keras"
         self.autoencoder_model.save(model_ae_path)
         self.log.info(f"Saved: {model_ae_path}")
 
-        model_rf_path = Path(output_dir) / f"{self.config.output_model_rf}.pkl"
+        model_rf_path = Path("artifacts") / "random_forest.pkl"
         joblib.dump(self.random_forest_model, model_rf_path)
         self.log.info(f"Saved: {model_rf_path}")
 
@@ -461,13 +466,16 @@ class DeepAutoencoder:
             "encoding_dim": self.config.encoding_dim,
             "ae_normalization": self.ae_normalization_params,
         }
-        config_path = Path(output_dir) / f"{self.config.output_config}.pkl"
+        config_path = Path("artifacts") / "deep_ae_ensemble_config.pkl"
         joblib.dump(config_data, config_path)
 
         self.log.info(f"Saved: {config_path}")
 
-    def generate_visualizations(self, output_dir: str = "..") -> None:
+    def generate_visualizations(self) -> None:
         self.log.info("Generating visualizations...")
+
+        if not os.path.exists("./plots"):
+            os.makedirs("./plots", exist_ok=True)
 
         fig, axes = plt.subplots(2, 3, figsize=(18, 10))
 
@@ -591,7 +599,7 @@ class DeepAutoencoder:
         ax.grid(alpha=0.3, axis="x")
 
         plt.tight_layout()
-        plot_path = Path(output_dir) / f"{self.config.output_plot}.png"
+        plot_path = Path("plots") / "deep_ae_ensemble_analysis.png"
         plt.savefig(plot_path, dpi=150, bbox_inches="tight")
         self.log.info(f"Saved: {plot_path}")
         plt.close()

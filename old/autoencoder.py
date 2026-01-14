@@ -25,7 +25,7 @@ print(f"TensorFlow: {tf.__version__}")
 print(f"GPU: {tf.config.list_physical_devices('GPU')}")
 
 # === 1️⃣ 載入 ===
-df = pd.read_csv("../output_anomaly.csv")
+df = pd.read_csv("../output_anomaly.raw_data")
 df.columns = df.columns.str.strip()
 print(f"\n✅ 資料: {df.shape}")
 
@@ -293,7 +293,7 @@ output = X_all.copy()
 output["score"] = mse
 output["anomaly"] = (mse > best["th"]).astype(int)
 output["Label"] = labels.values
-output.to_csv("output_v3.csv", index=False)
+output.to_csv("output_v3.raw_data", index=False)
 
 autoencoder.save("ae_v3.keras")
 joblib.dump(scaler, "scaler_v3.pkl")
@@ -308,7 +308,7 @@ joblib.dump(
     "info_v3.pkl",
 )
 
-print(f"✅ output_v3.csv, ae_v3.keras, scaler_v3.pkl, info_v3.pkl")
+print(f"✅ output_v3.raw_data, ae_v3.keras, scaler_v3.pkl, info_v3.pkl")
 
 # === 視覺化 ===
 fig, axes = plt.subplots(2, 2, figsize=(14, 10))

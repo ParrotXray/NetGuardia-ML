@@ -20,7 +20,7 @@ print("=" * 60)
 
 # === 1️⃣ 載入資料 ===
 print("\n📂 載入資料...")
-df = pd.read_csv("../output_deep_ae_ensemble.csv")
+df = pd.read_csv("../output_deep_ae_ensemble.raw_data")
 df.columns = df.columns.str.strip()
 
 config = joblib.load("../deep_ae_ensemble_config.pkl")
@@ -253,7 +253,7 @@ print("-" * 70)
 
 # 嘗試載入原始結果
 try:
-    df_old = pd.read_csv("output_mlp.csv")
+    df_old = pd.read_csv("output_mlp.raw_data")
     y_old_true = df_old["Label"]
     y_old_pred = df_old["predicted_label"]
 

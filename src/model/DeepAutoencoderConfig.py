@@ -39,8 +39,8 @@ class DeepAutoencoderConfig:
         default_factory=lambda: [0.3, 0.4, 0.5, 0.6, 0.7]
     )
 
-    output_csv_name: str = "output_deep_ae_ensemble"
-    output_model_ae: str = "deep_autoencoder"
-    output_model_rf: str = "random_forest"
-    output_config: str = "deep_ae_ensemble_config"
-    output_plot: str = "deep_ae_ensemble_analysis"
+    # output_csv_name: str = "output_deep_ae_ensemble"
+    # output_model_ae: str = "deep_autoencoder"
+    # output_model_rf: str = "random_forest"
+    # output_config: str = "deep_ae_ensemble_config"
+    # output_plot: str = "deep_ae_ensemble_analysis"

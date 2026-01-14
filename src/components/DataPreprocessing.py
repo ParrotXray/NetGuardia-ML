@@ -1,3 +1,5 @@
+import os
+
 import joblib
 import pandas as pd
 import numpy as np
@@ -127,7 +129,7 @@ class DataPreprocessing:
             "predictions": predictions,
         }
 
-    def output_result(self, output_dir: str = "..") -> None:
+    def output_result(self) -> None:
         if self.detection_result is None:
             raise ValueError(
                 "No detection result available. Call anomaly_detection() first!"
@@ -135,13 +137,18 @@ class DataPreprocessing:
 
         self.log.info("Saving processed data...")
 
+        if not (os.path.exists("./metadata") or os.path.exists("./artifacts") or os.path.exists("./outputs")):
+            os.makedirs("./metadata", exist_ok=True)
+            os.makedirs("./artifacts", exist_ok=True)
+            os.makedirs("./outputs", exist_ok=True)
+
         output: Dict[str, Any] = self.feature_matrix.copy()
         output["anomaly_if"] = self.detection_result["anomaly_if"]
         output["Label"] = self.labels.values
 
-        output_path = Path(output_dir) / f"{self.config.output_csv_name}.csv"
+        output_path = Path("outputs") / "preprocessing.csv"
         output.to_csv(output_path, index=False)
-        self.log.info(f"Stored: {output_path}")
+        self.log.info(f"save: {output_path}")
 
         stats = {
             "total_samples": len(self.combined_data),
@@ -152,11 +159,11 @@ class DataPreprocessing:
             "label_distribution": self.labels.value_counts().to_dict(),
         }
 
-        stats_path = Path(output_dir) / f"{self.config.output_stats_name}.json"
+        stats_path = Path("metadata") / "preprocessing_stats.json"
         with open(stats_path, "w", encoding="utf-8") as f:
             ujson.dump(stats, f, indent=2, ensure_ascii=False)
-        self.log.info(f"Statistics stored: {stats_path}")
+        self.log.info(f"Statistics save: {stats_path}")
 
-        model_path = Path(output_dir) / f"{self.config.output_model_name}.joblib"
+        model_path = Path("artifacts") / "isolation_forest_model.joblib"
         joblib.dump(self.clf, model_path)
-        self.log.info(f"Model stored: {model_path}")
+        self.log.info(f"Model save: {model_path}")

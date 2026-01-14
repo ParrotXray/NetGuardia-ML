@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -18,6 +20,7 @@ import joblib
 from src.utils.Logger import Logger
 from src.model.MLPConfig import MLPConfig
 from typing import List, Optional, Dict, Any, Tuple
+
 
 class MLP:
     def __init__(self, config: Optional[MLPConfig] = None) -> None:
@@ -57,13 +60,13 @@ class MLP:
 
         self.log: Logger = Logger("MLP")
 
-    def load_data(self, data_path: str, config_path: str) -> None:
-        self.log.info(f"Loading data from {data_path}...")
-        self.raw_data = pd.read_csv(data_path)
+    def load_data(self) -> None:
+        self.log.info(f"Loading data from outputs/deep_ae_ensemble.csv...")
+        self.raw_data = pd.read_csv("./outputs/deep_ae_ensemble.csv")
         self.raw_data.columns = self.raw_data.columns.str.strip()
 
-        self.log.info(f"Loading preprocessing config from {config_path}...")
-        ensemble_config = joblib.load(config_path)
+        self.log.info(f"Loading preprocessing config from artifacts/deep_ae_ensemble_config.pkl...")
+        ensemble_config = joblib.load("./artifacts/deep_ae_ensemble_config.pkl")
         self.scaler = ensemble_config["scaler"]
         self.clip_params = ensemble_config["clip_params"]
 
@@ -84,20 +87,20 @@ class MLP:
         self.features = self.anomaly_data.drop(columns=exclude_cols, errors="ignore")
         self.labels = self.anomaly_data["Label"]
 
-        self.features = self.features.replace([np.inf, -np.inf], np.nan).fillna(self.config.fill_value)
+        self.features = self.features.replace([np.inf, -np.inf], np.nan).fillna(
+            self.config.fill_value
+        )
         for col in self.features.columns:
             if col in self.clip_params:
                 self.features[col] = np.clip(
                     self.features[col],
                     self.clip_params[col]["lower"],
-                    self.clip_params[col]["upper"]
+                    self.clip_params[col]["upper"],
                 )
 
         self.features_scaled = self.scaler.transform(self.features)
         self.features_scaled = np.clip(
-            self.features_scaled,
-            self.config.clip_min,
-            self.config.clip_max
+            self.features_scaled, self.config.clip_min, self.config.clip_max
         )
 
         self.label_encoder = LabelEncoder()
@@ -114,12 +117,14 @@ class MLP:
     def split_data(self) -> None:
         self.log.info("Splitting data...")
 
-        self.train_features, self.test_features, self.train_labels, self.test_labels = train_test_split(
-            self.features_scaled,
-            self.labels_encoded,
-            test_size=self.config.test_size,
-            random_state=self.config.random_state,
-            stratify=self.labels_encoded
+        self.train_features, self.test_features, self.train_labels, self.test_labels = (
+            train_test_split(
+                self.features_scaled,
+                self.labels_encoded,
+                test_size=self.config.test_size,
+                random_state=self.config.random_state,
+                stratify=self.labels_encoded,
+            )
         )
 
         self.log.info(f"Training set: {self.train_features.shape[0]:,}")
@@ -142,7 +147,9 @@ class MLP:
             label = self.label_encoder.classes_[cls]
             original = class_counts[cls]
             target = self.smote_strategy[cls]
-            self.log.info(f"{label:<35} {original:>6,} -> {target:>6,} (+{target - original:,})")
+            self.log.info(
+                f"{label:<35} {original:>6,} -> {target:>6,} (+{target - original:,})"
+            )
 
         min_samples = min([class_counts[c] for c in self.smote_strategy])
         k_neighbors = min(self.config.smote_k_neighbors, min_samples - 1)
@@ -154,8 +161,7 @@ class MLP:
         )
 
         self.train_features_balanced, self.train_labels_balanced = smote.fit_resample(
-            self.train_features,
-            self.train_labels
+            self.train_features, self.train_labels
         )
 
         self.log.info(
@@ -175,7 +181,7 @@ class MLP:
         class_weights_array = compute_class_weight(
             class_weight="balanced",
             classes=np.unique(self.train_labels_balanced),
-            y=self.train_labels_balanced
+            y=self.train_labels_balanced,
         )
         self.class_weights = dict(enumerate(class_weights_array))
 
@@ -195,7 +201,9 @@ class MLP:
 
         x = inputs
 
-        for i, (size, dropout) in enumerate(zip(self.config.layer_sizes, self.config.dropout_rates)):
+        for i, (size, dropout) in enumerate(
+            zip(self.config.layer_sizes, self.config.dropout_rates)
+        ):
             x = layers.Dense(size, activation="relu")(x)
             x = layers.BatchNormalization()(x)
             if dropout > 0:
@@ -203,7 +211,9 @@ class MLP:
 
         outputs = layers.Dense(n_classes, activation="softmax", name="output")(x)
 
-        self.mlp_model = models.Model(inputs=inputs, outputs=outputs, name="mlp_improved")
+        self.mlp_model = models.Model(
+            inputs=inputs, outputs=outputs, name="mlp_improved"
+        )
 
         self.mlp_model.compile(
             optimizer=Adam(learning_rate=self.config.learning_rate),
@@ -221,14 +231,14 @@ class MLP:
                 monitor="val_loss",
                 patience=self.config.early_stopping_patience,
                 restore_best_weights=True,
-                verbose=1
+                verbose=1,
             ),
             ReduceLROnPlateau(
                 monitor="val_loss",
                 factor=self.config.reduce_lr_factor,
                 patience=self.config.reduce_lr_patience,
                 min_lr=self.config.min_lr,
-                verbose=1
+                verbose=1,
             ),
         ]
 
@@ -249,17 +259,14 @@ class MLP:
         self.log.info("Evaluating model...")
 
         self.test_loss, self.test_accuracy = self.mlp_model.evaluate(
-            self.test_features,
-            self.test_labels,
-            verbose=0
+            self.test_features, self.test_labels, verbose=0
         )
 
         self.log.info(f"Test accuracy: {self.test_accuracy:.4f}")
         self.log.info(f"Test loss: {self.test_loss:.4f}")
 
         self.predictions = np.argmax(
-            self.mlp_model.predict(self.test_features, verbose=0),
-            axis=1
+            self.mlp_model.predict(self.test_features, verbose=0), axis=1
         )
 
         print("Detailed classification report:")
@@ -267,32 +274,41 @@ class MLP:
             self.test_labels,
             self.predictions,
             target_names=self.label_encoder.classes_,
-            digits=4
+            digits=4,
         )
         print(f"\n{report}")
 
-    def save_results(self, output_dir: str = "..") -> None:
+    def save_results(self) -> None:
         self.log.info("Saving results...")
 
-        output_df = pd.DataFrame({
-            'Label': self.label_encoder.inverse_transform(self.test_labels),
-            'predicted_label': self.label_encoder.inverse_transform(self.predictions),
-            'correct': self.test_labels == self.predictions
-        })
+        if not (os.path.exists("./metadata") or os.path.exists("./artifacts") or os.path.exists("./outputs")):
+            os.makedirs("./metadata", exist_ok=True)
+            os.makedirs("./artifacts", exist_ok=True)
+            os.makedirs("./outputs", exist_ok=True)
+
+        output_df = pd.DataFrame(
+            {
+                "Label": self.label_encoder.inverse_transform(self.test_labels),
+                "predicted_label": self.label_encoder.inverse_transform(
+                    self.predictions
+                ),
+                "correct": self.test_labels == self.predictions,
+            }
+        )
 
         prediction_probs = self.mlp_model.predict(self.test_features, verbose=0)
         for idx, class_name in enumerate(self.label_encoder.classes_):
-            output_df[f'prob_{class_name}'] = prediction_probs[:, idx]
+            output_df[f"prob_{class_name}"] = prediction_probs[:, idx]
 
-        csv_path = Path(output_dir) / f"{self.config.output_csv_name}.csv"
+        csv_path = Path("outputs") / "mlp.csv"
         output_df.to_csv(csv_path, index=False)
         self.log.info(f"Saved: {csv_path}")
 
-        model_path = Path(output_dir) / f"{self.config.output_model_name}.keras"
+        model_path = Path("artifacts") / "mlp.keras"
         self.mlp_model.save(model_path)
         self.log.info(f"Saved: {model_path}")
 
-        encoder_path = Path(output_dir) / f"{self.config.output_encoder_name}.pkl"
+        encoder_path = Path("artifacts") / "label_encoder.pkl"
         joblib.dump(self.label_encoder, encoder_path)
         self.log.info(f"Saved: {encoder_path}")
 
@@ -305,16 +321,18 @@ class MLP:
             "test_accuracy": float(self.test_accuracy),
             "test_loss": float(self.test_loss),
         }
-        config_path = Path(output_dir) / f"{self.config.output_config_name}.pkl"
+        config_path = Path("artifacts") / "mlp_config.pkl"
         joblib.dump(config_data, config_path)
         self.log.info(f"Saved: {config_path}")
 
-    def generate_visualizations(self, output_dir: str = "..") -> None:
+    def generate_visualizations(self) -> None:
         self.log.info("Generating visualizations...")
+
+        if not os.path.exists("./plots"):
+            os.makedirs("./plots", exist_ok=True)
 
         fig, axes = plt.subplots(2, 2, figsize=(16, 12))
 
-        # Confusion matrix
         ax = axes[0, 0]
         cm = confusion_matrix(self.test_labels, self.predictions)
         cm_normalized = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
@@ -340,7 +358,6 @@ class MLP:
         ax.legend()
         ax.grid(alpha=0.3)
 
-        # Per-class accuracy
         ax = axes[1, 0]
         accuracies = []
         labels_list = []
@@ -377,7 +394,7 @@ class MLP:
         ax.grid(alpha=0.3, axis="y")
 
         plt.tight_layout()
-        plot_path = Path(output_dir) / f"{self.config.output_plot_name}.png"
+        plot_path = Path("plots") / "mlp_analysis.png"
         plt.savefig(plot_path, dpi=150, bbox_inches="tight")
         self.log.info(f"Saved: {plot_path}")
         plt.close()

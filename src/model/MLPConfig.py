@@ -26,8 +26,8 @@ class MLPConfig:
     clip_min: float = -5.0
     clip_max: float = 5.0
 
-    output_model_name: str = "mlp_improved"
-    output_encoder_name: str = "label_encoder_improved"
-    output_config_name: str = "mlp_improved_config"
-    output_plot_name: str = "mlp_improved_analysis"
-    output_csv_name: str = "output_mlp_improved"
+    # output_model_name: str = "mlp_improved"
+    # output_encoder_name: str = "label_encoder_improved"
+    # output_config_name: str = "mlp_improved_config"
+    # output_plot_name: str = "mlp_improved_analysis"
+    # output_csv_name: str = "output_mlp_improved"
