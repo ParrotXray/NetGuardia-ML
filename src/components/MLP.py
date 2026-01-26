@@ -89,6 +89,44 @@ class MLP:
         self.features = self.anomaly_data.drop(columns=exclude_cols, errors="ignore")
         self.labels = self.anomaly_data["Label"]
 
+        benign_mask = self.labels == "BENIGN"
+        benign_count = benign_mask.sum()
+
+        if benign_count > 0:
+            self.log.warning(
+                f"Removing {benign_count:,} BENIGN samples "
+                f"({benign_count / len(self.labels) * 100:.2f}%) - likely false positives"
+            )
+
+            self.features = self.features[~benign_mask].reset_index(drop=True)
+            self.labels = self.labels[~benign_mask].reset_index(drop=True)
+
+        # self.log.info("Merging rare attack subtypes...")
+        #
+        # web_attack_mapping = {
+        #     "Web Attack - Brute Force": "Web Attack",
+        #     "Web Attack - Sql Injection": "Web Attack",
+        #     "Web Attack - XSS": "Web Attack",
+        # }
+        # self.labels = self.labels.replace(web_attack_mapping)
+
+        min_samples_threshold = 50
+
+        label_counts = self.labels.value_counts()
+        rare_labels = label_counts[label_counts < min_samples_threshold].index.tolist()
+
+        if rare_labels:
+            self.log.warning(
+                f"Removing {len(rare_labels)} classes with < {min_samples_threshold} samples:"
+            )
+            for label in rare_labels:
+                count = label_counts[label]
+                self.log.warning(f"  - {label}: {count} samples")
+
+            mask = ~self.labels.isin(rare_labels)
+            self.features = self.features[mask].reset_index(drop=True)
+            self.labels = self.labels[mask].reset_index(drop=True)
+
         self.features = self.features.replace([np.inf, -np.inf], np.nan).fillna(
             self.config.fill_value
         )
@@ -111,10 +149,12 @@ class MLP:
         self.log.info(f"Feature dimensions: {self.features_scaled.shape}")
         self.log.info(f"Number of classes: {len(self.label_encoder.classes_)}")
 
-        print("Original class distribution:")
+        print("\nFinal class distribution:")
+        print("=" * 60)
         for idx, label in enumerate(self.label_encoder.classes_):
             count = (self.labels_encoded == idx).sum()
             print(f"{idx:2d}. {label:<35} {count:>7,}")
+        print("=" * 60)
 
     def split_data(self) -> None:
         self.log.info("Splitting data...")
@@ -138,11 +178,58 @@ class MLP:
         unique, counts = np.unique(self.train_labels, return_counts=True)
         class_counts = dict(zip(unique, counts))
 
+        min_samples_for_smote = 100
+
+        removed_classes = []
+        for cls, count in class_counts.items():
+            if count < min_samples_for_smote:
+                removed_classes.append(cls)
+
+        if removed_classes:
+            self.log.warning(
+                f"Removing {len(removed_classes)} classes with < {min_samples_for_smote} "
+                "samples before SMOTE:"
+            )
+            for cls in removed_classes:
+                label = self.label_encoder.classes_[cls]
+                count = class_counts[cls]
+                self.log.warning(f"  - {label}: {count} samples")
+
+            mask = ~np.isin(self.train_labels, removed_classes)
+            self.train_features = self.train_features[mask]
+            self.train_labels = self.train_labels[mask]
+
+            test_mask = ~np.isin(self.test_labels, removed_classes)
+            self.test_features = self.test_features[test_mask]
+            self.test_labels = self.test_labels[test_mask]
+
+            remaining_labels = [
+                self.label_encoder.classes_[i]
+                for i in range(len(self.label_encoder.classes_))
+                if i not in removed_classes
+            ]
+            self.label_encoder = LabelEncoder()
+            self.label_encoder.fit(remaining_labels)
+
+            train_label_names = [self.label_encoder.classes_[i] for i in self.train_labels]
+            test_label_names = [self.label_encoder.classes_[i] for i in self.test_labels]
+            self.train_labels = self.label_encoder.transform(train_label_names)
+            self.test_labels = self.label_encoder.transform(test_label_names)
+
+            unique, counts = np.unique(self.train_labels, return_counts=True)
+            class_counts = dict(zip(unique, counts))
+
         max_count = max(counts)
         self.smote_strategy = {}
         for cls, count in class_counts.items():
             if count < max_count * self.config.smote_ratio:
                 self.smote_strategy[cls] = int(max_count * self.config.smote_ratio)
+
+        if not self.smote_strategy:
+            self.log.warning("No classes need SMOTE augmentation")
+            self.train_features_balanced = self.train_features
+            self.train_labels_balanced = self.train_labels
+            return
 
         self.log.info("SMOTE strategy:")
         for cls in self.smote_strategy:
@@ -171,11 +258,13 @@ class MLP:
             f"{self.train_features_balanced.shape[0]:,}"
         )
 
-        print("Balanced class distribution:")
+        print("\nBalanced class distribution:")
+        print("=" * 60)
         unique, counts = np.unique(self.train_labels_balanced, return_counts=True)
         for cls, count in zip(unique, counts):
             label = self.label_encoder.classes_[cls]
             print(f"{label:<35} {count:>7,}")
+        print("=" * 60)
 
     def calculate_class_weights(self) -> None:
         self.log.info("Calculating class weights...")
@@ -283,14 +372,9 @@ class MLP:
     def save_results(self) -> None:
         self.log.info("Saving results...")
 
-        if not (
-            os.path.exists("./metadata")
-            or os.path.exists("./artifacts")
-            or os.path.exists("./outputs")
-        ):
-            os.makedirs("./metadata", exist_ok=True)
-            os.makedirs("./artifacts", exist_ok=True)
-            os.makedirs("./outputs", exist_ok=True)
+        os.makedirs("./metadata", exist_ok=True)
+        os.makedirs("./artifacts", exist_ok=True)
+        os.makedirs("./outputs", exist_ok=True)
 
         output_df = pd.DataFrame(
             {
@@ -334,8 +418,7 @@ class MLP:
     def generate_visualizations(self) -> None:
         self.log.info("Generating visualizations...")
 
-        if not os.path.exists("./plots"):
-            os.makedirs("./plots", exist_ok=True)
+        os.makedirs("./plots", exist_ok=True)
 
         fig, axes = plt.subplots(2, 2, figsize=(16, 12))
 
@@ -354,7 +437,6 @@ class MLP:
         ax.set_xlabel("Predicted")
         ax.set_ylabel("True")
 
-        # Training history
         ax = axes[0, 1]
         ax.plot(self.training_history.history["accuracy"], label="Train", linewidth=2)
         ax.plot(self.training_history.history["val_accuracy"], label="Val", linewidth=2)

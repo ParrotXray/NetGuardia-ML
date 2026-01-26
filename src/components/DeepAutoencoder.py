@@ -67,9 +67,9 @@ class DeepAutoencoder:
         benign_count = (self.labels == "BENIGN").sum()
         attack_count = (self.labels != "BENIGN").sum()
 
-        self.log.info(f"Total samples: {len(self.raw_data):,}")
-        self.log.info(f"BENIGN: {benign_count:,}")
-        self.log.info(f"Attack: {attack_count:,}")
+        print(f"Total samples: {len(self.raw_data):,}")
+        print(f"BENIGN: {benign_count:,}")
+        print(f"Attack: {attack_count:,}")
 
     def prepare_data(self) -> None:
         self.log.info("Preparing data...")
@@ -84,9 +84,9 @@ class DeepAutoencoder:
         self.test_features = self.features.copy()
         self.test_labels = self.binary_labels.copy()
 
-        self.log.info(f"BENIGN training samples: {len(self.benign_features):,}")
-        self.log.info(f"Total test samples: {len(self.test_features):,}")
-        self.log.info(f"Number of features: {self.features.shape[1]}")
+        print(f"BENIGN training samples: {len(self.benign_features):,}")
+        print(f"Total test samples: {len(self.test_features):,}")
+        print(f"Number of features: {self.features.shape[1]}")
 
     def preprocess_data(self) -> None:
         self.log.info("Preprocessing data...")
@@ -373,7 +373,7 @@ class DeepAutoencoder:
                 prec = tp / (tp + fp) if (tp + fp) > 0 else 0
                 f1 = 2 * prec * tpr / (prec + tpr) if (prec + tpr) > 0 else 0
 
-                if f1 > best_f1 and prec > 0.5:
+                if f1 > best_f1 and prec > 0.8 and fpr < 0.02:
                     best_f1 = f1
                     best_threshold = threshold
                     best_metrics = {
@@ -406,12 +406,24 @@ class DeepAutoencoder:
 
         self.best_strategy = max(self.strategy_results, key=lambda x: x["f1"])
 
+        # self.best_strategy = min(
+        #     [s for s in self.strategy_results if s["f1"] > 0.95],
+        #     key=lambda x: x["fpr"]
+        # )
+
+        # self.best_strategy = max(
+        #     self.strategy_results,
+        #     key=lambda x: x["f1"] * 0.6 + (1 - x["fpr"]) * 0.4
+        # )
+
+        print(f"\n{'=' * 60}")
         print(f"Best strategy: {self.best_strategy['name']}")
         print(f"Threshold: {self.best_strategy['threshold']:.4f}")
         print(f"TPR: {self.best_strategy['tpr']:.2%}")
         print(f"FPR: {self.best_strategy['fpr']:.2%}")
         print(f"Precision: {self.best_strategy['precision']:.3f}")
         print(f"F1: {self.best_strategy['f1']:.3f}")
+        print(f"{'=' * 60}\n")
 
     def evaluate_attack_types(self) -> None:
         self.log.info("Attack type detection rates...")
@@ -432,14 +444,9 @@ class DeepAutoencoder:
     def save_results(self) -> None:
         self.log.info("Saving results...")
 
-        if not (
-            os.path.exists("./metadata")
-            or os.path.exists("./artifacts")
-            or os.path.exists("./outputs")
-        ):
-            os.makedirs("./metadata", exist_ok=True)
-            os.makedirs("./artifacts", exist_ok=True)
-            os.makedirs("./outputs", exist_ok=True)
+        os.makedirs("./metadata", exist_ok=True)
+        os.makedirs("./artifacts", exist_ok=True)
+        os.makedirs("./outputs", exist_ok=True)
 
         output = self.features.copy()
         output["deep_ae_mse"] = self.ae_mse_scores
@@ -478,8 +485,7 @@ class DeepAutoencoder:
     def generate_visualizations(self) -> None:
         self.log.info("Generating visualizations...")
 
-        if not os.path.exists("./plots"):
-            os.makedirs("./plots", exist_ok=True)
+        os.makedirs("./plots", exist_ok=True)
 
         fig, axes = plt.subplots(2, 3, figsize=(18, 10))
 

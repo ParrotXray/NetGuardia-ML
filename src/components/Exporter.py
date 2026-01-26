@@ -137,7 +137,7 @@ class Exporter:
             self.rf_model,
             initial_types=initial_type,
             target_opset=self.config.opset_version,
-            options={id(self.rf_model): {'zipmap': False}}
+            options={id(self.rf_model): {"zipmap": False}},
         )
 
         self.rf_onnx_path = Path("exports") / "random_forest.onnx"
@@ -286,8 +286,7 @@ class Exporter:
     def save_config_json(self) -> None:
         self.log.info("Saving configuration JSON...")
 
-        if not os.path.exists("./exports"):
-            os.makedirs("./exports", exist_ok=True)
+        os.makedirs("./exports", exist_ok=True)
 
         full_config_path = Path("exports") / "full_config.json"
         with open(full_config_path, "w", encoding="utf-8") as f:
@@ -339,7 +338,11 @@ class Exporter:
         rf_proba_matrix = rf_output[1]  # output_probability: [batch, n_classes]
 
         if rf_proba_matrix.shape[1] > 1:
-            rf_proba = rf_proba_matrix[0][1] if rf_proba_matrix.shape[1] == 2 else np.max(rf_proba_matrix[0])
+            rf_proba = (
+                rf_proba_matrix[0][1]
+                if rf_proba_matrix.shape[1] == 2
+                else np.max(rf_proba_matrix[0])
+            )
         else:
             rf_proba = rf_proba_matrix[0][0]
 

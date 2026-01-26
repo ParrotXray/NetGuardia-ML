@@ -64,6 +64,14 @@ class DataPreprocess:
         self.labels = (
             self.combined_data["Label"].str.replace("�", "-", regex=False).copy()
         )
+
+        web_attack_mapping = {
+            "Web Attack - Brute Force": "Web Attack",
+            "Web Attack - Sql Injection": "Web Attack",
+            "Web Attack - XSS": "Web Attack",
+        }
+        self.labels = self.labels.replace(web_attack_mapping)
+
         self.log.info(f"Combined data: {self.combined_data.shape}")
 
         print("Tag distribution:")
@@ -139,14 +147,9 @@ class DataPreprocess:
 
         self.log.info("Saving processed data...")
 
-        if not (
-            os.path.exists("./metadata")
-            or os.path.exists("./artifacts")
-            or os.path.exists("./outputs")
-        ):
-            os.makedirs("./metadata", exist_ok=True)
-            os.makedirs("./artifacts", exist_ok=True)
-            os.makedirs("./outputs", exist_ok=True)
+        os.makedirs("./metadata", exist_ok=True)
+        os.makedirs("./artifacts", exist_ok=True)
+        os.makedirs("./outputs", exist_ok=True)
 
         output: Dict[str, Any] = self.feature_matrix.copy()
         output["anomaly_if"] = self.detection_result["anomaly_if"]

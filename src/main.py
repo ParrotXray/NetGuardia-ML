@@ -1,61 +1,90 @@
+#!/usr/bin/env python3
+
 from components import DataPreprocess, DeepAutoencoder, MLP, Exporter
 from utils import Logger
 import time
+import argparse
 
 if __name__ == "__main__":
     log = Logger("Main")
 
-    log.info("Start processing data...")
-    dp = DataPreprocess()
-    dp.load_datasets("./raw_data")
-    dp.merge_dataset()
-    dp.feature_preparation()
-    dp.anomaly_detection()
-    dp.output_result()
+    start = time.perf_counter()
 
-    time.sleep(3)
+    parser = argparse.ArgumentParser(description="Training net-guardia models")
+    parser.add_argument("-a", "--all", action="store_true", help="ALL")
+    parser.add_argument(
+        "-dp", "--datapreprocess", action="store_true", help="DataPreprocess"
+    )
+    parser.add_argument(
+        "-da", "--deepautoencoder", action="store_true", help="DeepAutoencoder"
+    )
+    parser.add_argument("-mp", "--mlp", action="store_true", help="MLP")
+    parser.add_argument("-ep", "--export", action="store_true", help="Export")
 
-    log.info("Start Deep Autoencoder...")
-    da = DeepAutoencoder()
-    da.check_tensorflow()
-    da.load_data()
-    da.prepare_data()
-    da.preprocess_data()
-    da.build_autoencoder()
-    da.train_autoencoder()
-    da.calculate_ae_normalization()
-    da.predict_autoencoder()
-    da.train_random_forest()
-    da.create_ensemble_strategies()
-    da.evaluate_strategies()
-    da.evaluate_attack_types()
-    da.save_results()
-    da.generate_visualizations()
+    args = parser.parse_args()
 
-    time.sleep(3)
+    if not any(vars(args).values()):
+        parser.print_help()
 
-    log.info("Start MLP...")
-    mlp = MLP()
-    mlp.load_data()
-    mlp.prepare_features()
-    mlp.split_data()
-    mlp.apply_smote()
-    mlp.calculate_class_weights()
-    mlp.build_model()
-    mlp.train_model()
-    mlp.evaluate_model()
-    mlp.save_results()
-    mlp.generate_visualizations()
+    if args.all or args.datapreprocess:
+        log.info("Start processing data...")
+        dp = DataPreprocess()
+        dp.load_datasets("./raw_data")
+        dp.merge_dataset()
+        dp.feature_preparation()
+        dp.anomaly_detection()
+        dp.output_result()
 
-    time.sleep(3)
+        time.sleep(3)
 
-    log.info("Export models to onnx...")
-    ep = Exporter()
-    ep.load_models()
-    ep.export_deep_ae_onnx()
-    ep.export_rf_onnx()
-    ep.export_mlp_onnx()
-    ep.build_config_json()
-    ep.save_config_json()
-    ep.verify_onnx_models()
-    ep.print_summary()
+    if args.all or args.deepautoencoder:
+        log.info("Start Deep Autoencoder...")
+        da = DeepAutoencoder()
+        da.check_tensorflow()
+        da.load_data()
+        da.prepare_data()
+        da.preprocess_data()
+        da.build_autoencoder()
+        da.train_autoencoder()
+        da.calculate_ae_normalization()
+        da.predict_autoencoder()
+        da.train_random_forest()
+        da.create_ensemble_strategies()
+        da.evaluate_strategies()
+        da.evaluate_attack_types()
+        da.save_results()
+        da.generate_visualizations()
+
+        time.sleep(3)
+
+    if args.all or args.mlp:
+        log.info("Start MLP...")
+        mlp = MLP()
+        mlp.load_data()
+        mlp.prepare_features()
+        mlp.split_data()
+        mlp.apply_smote()
+        mlp.calculate_class_weights()
+        mlp.build_model()
+        mlp.train_model()
+        mlp.evaluate_model()
+        mlp.save_results()
+        mlp.generate_visualizations()
+
+        time.sleep(3)
+
+    if args.all or args.export:
+        log.info("Export models to onnx...")
+        ep = Exporter()
+        ep.load_models()
+        ep.export_deep_ae_onnx()
+        ep.export_rf_onnx()
+        ep.export_mlp_onnx()
+        ep.build_config_json()
+        ep.save_config_json()
+        ep.verify_onnx_models()
+        ep.print_summary()
+
+    end = time.perf_counter()
+
+    log.info(f"Execution time: {end - start}s")

@@ -36,7 +36,7 @@ class DeepAutoencoderConfig:
     rf_train_samples: int = 50000
 
     ensemble_strategies: List[float] = field(
-        default_factory=lambda: [0.3, 0.4, 0.5, 0.6, 0.7]
+        default_factory=lambda: [0.4, 0.5, 0.6, 0.7, 0.8]
     )
 
     # output_csv_name: str = "output_deep_ae_ensemble"
