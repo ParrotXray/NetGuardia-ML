@@ -69,6 +69,8 @@ class DataPreprocess:
             "Web Attack - Brute Force": "Web Attack",
             "Web Attack - Sql Injection": "Web Attack",
             "Web Attack - XSS": "Web Attack",
+            "Infiltration": "Web Attack",
+            "Heartbleed": "DoS Slowhttptest",
         }
         self.labels = self.labels.replace(web_attack_mapping)
 

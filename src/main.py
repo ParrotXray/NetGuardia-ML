@@ -3,6 +3,7 @@
 from components import DataPreprocess, DeepAutoencoder, MLP, Exporter
 from utils import Logger
 import time
+from datetime import timedelta
 import argparse
 
 if __name__ == "__main__":
@@ -87,4 +88,4 @@ if __name__ == "__main__":
 
     end = time.perf_counter()
 
-    log.info(f"Execution time: {end - start}s")
+    log.info(f"Execution time: {timedelta(seconds=(end - start))}")

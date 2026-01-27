@@ -39,6 +39,10 @@ class DeepAutoencoderConfig:
         default_factory=lambda: [0.4, 0.5, 0.6, 0.7, 0.8]
     )
 
+    percentiles: List[float] = field(
+        default_factory=lambda: [96.0, 97.0, 98.0, 99.0, 99.5, 99.7]
+    )
+
     # output_csv_name: str = "output_deep_ae_ensemble"
     # output_model_ae: str = "deep_autoencoder"
     # output_model_rf: str = "random_forest"

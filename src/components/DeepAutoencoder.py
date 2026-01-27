@@ -44,7 +44,7 @@ class DeepAutoencoder:
         self.rf_probabilities: Optional[np.ndarray] = None
 
         self.ensemble_strategies: Optional[Dict[str, np.ndarray]] = None
-        self.strategy_results: Optional[List[Dict[str, Any]]] = None
+        self.strategy_results: Optional[List[Dict[str, Any]]] = []
         self.best_strategy: Optional[Dict[str, Any]] = None
 
         self.training_history: Optional[keras.callbacks.History] = None
@@ -349,18 +349,16 @@ class DeepAutoencoder:
         print(header)
         print("-" * 60)
 
-        self.strategy_results = []
-
         for name, score in self.ensemble_strategies.items():
             thresholds = np.percentile(
-                score[self.test_labels == 0], [90, 92, 94, 95, 96, 97, 98, 99]
+                score[self.test_labels == 0], self.config.percentiles
             )
 
             best_f1 = 0
             best_threshold = None
             best_metrics = None
 
-            for threshold in thresholds:
+            for percentile, threshold in zip(self.config.percentiles, thresholds):
                 pred = (score > threshold).astype(int)
 
                 tp = ((self.test_labels == 1) & (pred == 1)).sum()
@@ -373,7 +371,10 @@ class DeepAutoencoder:
                 prec = tp / (tp + fp) if (tp + fp) > 0 else 0
                 f1 = 2 * prec * tpr / (prec + tpr) if (prec + tpr) > 0 else 0
 
-                if f1 > best_f1 and prec > 0.8 and fpr < 0.02:
+                estimate_fpr_limit = ((100 - percentile) / 100) * 1.5
+
+                if f1 > best_f1 and prec > 0.85 and fpr < estimate_fpr_limit and tpr > 0.95:
+                    # self.log.info(f"Strict selection criteria: {fpr}, {tpr}")
                     best_f1 = f1
                     best_threshold = threshold
                     best_metrics = {
