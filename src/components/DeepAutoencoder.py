@@ -373,7 +373,7 @@ class DeepAutoencoder:
 
                 estimate_fpr_limit = ((100 - percentile) / 100) * 1.5
 
-                if f1 > best_f1 and prec > 0.85 and fpr < estimate_fpr_limit and tpr > 0.95:
+                if f1 > best_f1 and prec > 0.5 and fpr < estimate_fpr_limit and tpr > 0.90:
                     # self.log.info(f"Strict selection criteria: {fpr}, {tpr}")
                     best_f1 = f1
                     best_threshold = threshold
