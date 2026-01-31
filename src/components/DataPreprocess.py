@@ -71,15 +71,33 @@ class DataPreprocess:
         )
 
         _mapping = {
+            # 2017
             "Web Attack - Brute Force": "Web Attack",
             "Web Attack - Sql Injection": "Web Attack",
             "Web Attack - XSS": "Web Attack",
             "Infiltration": "Web Attack",
-            "Heartbleed": "DoS Slowhttptest",
+            "Heartbleed": "Web Attack",
+            'DoS GoldenEye': 'DoS',
+            'DoS Hulk': 'DoS',
+            'DoS Slowhttptest': 'DoS',
+            'DoS slowloris': 'DoS',
+            'FTP-Patator': 'Brute Force',
+            'SSH-Patator': 'Brute Force',
+
+            # 2018
             "Brute Force -Web": "Web Attack",
             "Brute Force -XSS": "Web Attack",
             "SQL Injection": "Web Attack",
             "Infilteration": "Web Attack",
+            'DDOS attack-HOIC': 'DDoS',
+            'DDoS attacks-LOIC-HTTP': 'DDoS',
+            'DDOS attack-LOIC-UDP': 'DDoS',
+            'DoS attacks-Hulk': 'DoS',
+            'DoS attacks-SlowHTTPTest': 'DoS',
+            'DoS attacks-GoldenEye': 'DoS',
+            'DoS attacks-Slowloris': 'DoS',
+            'FTP-BruteForce': 'Brute Force',
+            'SSH-Bruteforce': 'Brute Force',
         }
         self.labels = self.labels.replace(_mapping)
 
