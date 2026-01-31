@@ -84,7 +84,6 @@ class MLP:
             "rf_proba",
             "ensemble_score",
             "ensemble_anomaly",
-            "anomaly_if",
         ]
         self.features = self.anomaly_data.drop(columns=exclude_cols, errors="ignore")
         self.labels = self.anomaly_data["Label"]

@@ -33,7 +33,6 @@ if __name__ == "__main__":
         dp.load_datasets("./raw_data")
         dp.merge_dataset()
         dp.feature_preparation()
-        dp.anomaly_detection()
         dp.output_result()
 
         time.sleep(3)

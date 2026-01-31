@@ -74,7 +74,7 @@ class DeepAutoencoder:
     def prepare_data(self) -> None:
         self.log.info("Preparing data...")
 
-        exclude_cols = ["Label", "anomaly_if"]
+        exclude_cols = ["Label"]
 
         self.benign_features = self.benign_data.drop(
             columns=exclude_cols, errors="ignore"
@@ -90,7 +90,7 @@ class DeepAutoencoder:
         self.labels = pd.concat(
             [self.benign_data["Label"], self.attack_data["Label"]], ignore_index=True
         )
-        self.binary_labels = (self.labels != "BENIGN").astype(int)
+        self.binary_labels = ((self.labels != "BENIGN") | (self.labels != "Benign")).astype(int)
 
         self.test_features = self.features.copy()
         self.test_labels = self.binary_labels.copy()
@@ -440,7 +440,7 @@ class DeepAutoencoder:
     def evaluate_attack_types(self) -> None:
         self.log.info("Attack type detection rates...")
 
-        attack_labels = self.labels[(self.labels != "BENIGN") & (self.labels.notna())]
+        attack_labels = self.labels[(self.labels != "BENIGN") | (self.labels != "Benign") & (self.labels.notna())]
         for attack_type in sorted(attack_labels.unique()):
             mask = self.labels == attack_type
             detected = (
@@ -471,7 +471,7 @@ class DeepAutoencoder:
         output["Label"] = self.labels.values
 
         attack_anomaly_mask = (output["ensemble_anomaly"] == 1) & (
-            output["Label"] != "BENIGN"
+            (output["Label"] != "BENIGN") | (output["Label"] != "Benign")
         )
         output_filtered = output[attack_anomaly_mask]
 

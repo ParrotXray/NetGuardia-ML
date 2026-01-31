@@ -1,9 +1,7 @@
 import os
 
-import joblib
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import IsolationForest
 from pathlib import Path
 import ujson
 from typing import List, Optional, Dict, Any
@@ -18,9 +16,6 @@ class DataPreprocess:
         self.combined_data: Optional[pd.DataFrame] = None
         self.feature_matrix: Optional[pd.DataFrame] = None
         self.labels: Optional[pd.Series] = None
-
-        self.clf: Optional[IsolationForest] = None
-        self.detection_result: Optional[Dict[str, Any]] = None
 
         self.config: Optional[PreprocessConfig] = config or PreprocessConfig()
 
@@ -71,8 +66,10 @@ class DataPreprocess:
             "Web Attack - XSS": "Web Attack",
             "Infiltration": "Web Attack",
             "Heartbleed": "DoS Slowhttptest",
+            "Brute Force -Web": "Web Attack",
+            "Brute Force -XSS": "Web Attack",
+            "SQL Injection": "Web Attack",
         }
-
         self.labels = self.labels.replace(web_attack_mapping)
 
         self.log.info(f"Combined data: {self.combined_data.shape}")
@@ -87,37 +84,73 @@ class DataPreprocess:
         self.log.info("Feature preparation...")
 
         selected_features = [
-            # 最重要 (Rank 1-5)
-            "Destination Port",
-            "Protocol",
-            "Flow Duration",
-            "Total Fwd Packets",
-            "Total Backward Packets",
-            "Total Length of Fwd Packets",
-            # 重要 (Rank 6-10)
-            "Total Length of Bwd Packets",
-            "Flow Bytes/s",
-            "Flow Packets/s",
-            "Fwd Packet Length Mean",
-            "Bwd Packet Length Mean",
-            # 次要重要 (Rank 11-20)
-            "Flow IAT Mean",
-            "Fwd IAT Mean",
-            "Bwd IAT Mean",
-            "Fwd PSH Flags",
-            "Bwd PSH Flags",
-            "FIN Flag Count",
-            "SYN Flag Count",
-            "RST Flag Count",
-            "ACK Flag Count",
-            "Init_Win_bytes_forward",
-            "Init_Win_bytes_backward",
-            "min_seg_size_forward",
-            "Packet Length Mean",
-            "Packet Length Std",
-            "Avg Fwd Segment Size",
-            "Avg Bwd Segment Size",
+            # === Tier 1: 最重要 (前 11 名) ===
+            'Dst Port',                      # 1. 攻擊目標識別
+            'Protocol',                      # 2. 協議類型 ⭐ NEW!
+            'Flow Duration',                 # 3. 異常連線時間
+            'Tot Fwd Pkts',                  # 4. 流量大小
+            'Tot Bwd Pkts',                  # 5. 回應模式
+            'TotLen Fwd Pkts',               # 6. 數據量
+            'TotLen Bwd Pkts',               # 7. 回應數據量
+            'Flow Byts/s',                   # 8. 流量速率
+            'Flow Pkts/s',                   # 9. 封包速率
+            'Init Fwd Win Byts',             # 10. TCP 特徵
+            'Init Bwd Win Byts',             # 11. TCP 回應
+
+            # === Tier 2: 重要 (第 12-21 名) ===
+            'Fwd Pkt Len Mean',              # 12. 封包大小模式
+            'Bwd Pkt Len Mean',              # 13. 回應封包模式
+            'Flow IAT Mean',                 # 14. 封包間隔
+            'Fwd IAT Mean',                  # 15. 發送節奏
+            'Bwd IAT Mean',                  # 16. 回應節奏
+            'PSH Flag Cnt',                  # 17. 數據推送
+            'ACK Flag Cnt',                  # 18. 確認封包
+            'SYN Flag Cnt',                  # 19. 連線建立
+            'FIN Flag Cnt',                  # 20. 連線結束
+            'RST Flag Cnt',                  # 21. 連線重置
+
+            # === Tier 3: 次要重要 (第 22-27 名) ===
+            'Pkt Len Mean',                  # 22. 整體封包大小
+            'Pkt Len Std',                   # 23. 封包大小變異
+            'Fwd Pkt Len Std',               # 24. 發送變異
+            'Bwd Pkt Len Std',               # 25. 回應變異
+            'Fwd Seg Size Min',              # 26. 最小段大小
+            'Fwd Act Data Pkts',             # 27. 實際數據封包數
         ]
+
+        # 2017
+        # selected_features = [
+        #     'Destination Port',  # 1. 攻擊目標識別
+        #     'Flow Duration',  # 2. 異常連線時間
+        #     'Total Fwd Packets',  # 3. 流量大小
+        #     'Total Backward Packets',  # 4. 回應模式
+        #     'Total Length of Fwd Packets',  # 5. 數據量
+        #     'Total Length of Bwd Packets',  # 6. 回應數據量
+        #     'Flow Bytes/s',  # 7. 流量速率
+        #     'Flow Packets/s',  # 8. 封包速率
+        #     'Init_Win_bytes_forward',  # 9. TCP 特徵
+        #     'Init_Win_bytes_backward',  # 10. TCP 回應
+        #
+        #     # === Tier 2: 重要 (第 11-20 名) ===
+        #     'Fwd Packet Length Mean',  # 11. 封包大小模式
+        #     'Bwd Packet Length Mean',  # 12. 回應封包模式
+        #     'Flow IAT Mean',  # 13. 封包間隔
+        #     'Fwd IAT Mean',  # 14. 發送節奏
+        #     'Bwd IAT Mean',  # 15. 回應節奏
+        #     'PSH Flag Count',  # 16. 數據推送
+        #     'ACK Flag Count',  # 17. 確認封包
+        #     'SYN Flag Count',  # 18. 連線建立
+        #     'FIN Flag Count',  # 19. 連線結束
+        #     'RST Flag Count',  # 20. 連線重置
+        #
+        #     # === Tier 3: 次要重要 (第 21-26 名) ===
+        #     'Packet Length Mean',  # 21. 整體封包大小
+        #     'Packet Length Std',  # 22. 封包大小變異
+        #     'Fwd Packet Length Std',  # 23. 發送變異
+        #     'Bwd Packet Length Std',  # 24. 回應變異
+        #     'min_seg_size_forward',  # 25. 最小段大小
+        #     'act_data_pkt_fwd',  # 26. 實際數據封包數
+        # ]
 
         available_features = [
             f for f in selected_features if f in self.combined_data.columns
@@ -137,62 +170,23 @@ class DataPreprocess:
         )
         self.log.info(f"Feature matrix shape: {self.feature_matrix.shape}")
 
-    def anomaly_detection(self):
+    def output_result(self) -> None:
         if self.feature_matrix is None:
             raise ValueError(
                 "No feature matrix available. Call feature_preparation() first!"
             )
 
-        self.log.info("IsolationForest anomaly detection...")
-        self.clf = IsolationForest(
-            contamination=self.config.contamination_rate,
-            random_state=self.config.random_state,
-            n_jobs=self.config.n_jobs,
-            verbose=self.config.if_verbose,
-        )
-
-        self.log.info(
-            f"Training IsolationForest (contamination={self.config.contamination_rate})..."
-        )
-        self.clf.fit(self.feature_matrix)
-
-        predictions = self.clf.predict(self.feature_matrix)
-        anomaly_if = np.where(predictions == 1, 0, 1)
-
-        anomaly_count = int(anomaly_if.sum())
-        anomaly_ratio = float(anomaly_count / len(self.combined_data) * 100)
-
-        self.log.info(
-            f"Number of anomalies: {anomaly_count:,} / {len(self.combined_data):,} "
-            f"({anomaly_ratio:.2f}%)"
-        )
-
-        self.detection_result = {
-            "anomaly_if": anomaly_if,
-            "anomaly_count": anomaly_count,
-            "anomaly_ratio": anomaly_ratio,
-            "predictions": predictions,
-        }
-
-    def output_result(self) -> None:
-        if self.detection_result is None:
-            raise ValueError(
-                "No detection result available. Call anomaly_detection() first!"
-            )
-
         self.log.info("Saving processed data...")
 
         os.makedirs("./metadata", exist_ok=True)
-        os.makedirs("./artifacts", exist_ok=True)
         os.makedirs("./outputs", exist_ok=True)
 
         output: pd.DataFrame = self.feature_matrix.copy()
-        output["anomaly_if"] = self.detection_result["anomaly_if"]
         output["Label"] = self.labels.values
 
         invalid_labels = ["Unknown", "0", "", "nan"]
-        benign_mask = output["Label"] == "BENIGN"
-        attack_mask = (output["Label"] != "BENIGN") & (
+        benign_mask = (output["Label"] == "BENIGN") | (output["Label"] == "Benign")
+        attack_mask = (output["Label"] != "BENIGN") | (output["Label"] != "Benign") & (
             ~output["Label"].isin(invalid_labels)
         )
         output_benign = output[benign_mask]
@@ -214,9 +208,8 @@ class DataPreprocess:
         stats = {
             "total_samples": len(self.combined_data),
             "total_features": self.feature_matrix.shape[1],
-            "anomaly_if_count": self.detection_result["anomaly_count"],
-            "anomaly_if_ratio": self.detection_result["anomaly_ratio"],
-            "contamination_rate": self.config.contamination_rate,
+            "benign_samples": len(output_benign),
+            "attack_samples": len(output_attack),
             "label_distribution": self.labels.value_counts().to_dict(),
         }
 
@@ -224,7 +217,3 @@ class DataPreprocess:
         with open(stats_path, "w", encoding="utf-8") as f:
             ujson.dump(stats, f, indent=2, ensure_ascii=False)
         self.log.info(f"Statistics save: {stats_path}")
-
-        model_path = Path("artifacts") / "isolation_forest_model.joblib"
-        joblib.dump(self.clf, model_path)
-        self.log.info(f"Model save: {model_path}")
