@@ -19,10 +19,10 @@ class DeepAutoencoderConfig:
     learning_rate: float = 0.001
     clipnorm: float = 1.0
     batch_size: int = 1024
-    epochs: int = 100
+    epochs: int = 150
     validation_split: float = 0.15
     early_stopping_patience: int = 20
-    reduce_lr_patience: int = 7
+    reduce_lr_patience: int = 8
     reduce_lr_factor: float = 0.5
     min_lr: float = 1e-7
 

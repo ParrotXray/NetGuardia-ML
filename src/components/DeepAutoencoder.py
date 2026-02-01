@@ -12,7 +12,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from tensorflow import keras
 from tensorflow.keras import layers, models, regularizers
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from tensorflow.keras.optimizers import Adam
 import joblib
 import matplotlib.pyplot as plt
@@ -190,8 +190,10 @@ class DeepAutoencoder:
             EarlyStopping(
                 monitor="val_loss",
                 patience=self.config.early_stopping_patience,
+                min_delta=1e-6,
                 restore_best_weights=True,
                 verbose=1,
+                mode='min'
             ),
             ReduceLROnPlateau(
                 monitor="val_loss",
@@ -199,6 +201,16 @@ class DeepAutoencoder:
                 patience=self.config.reduce_lr_patience,
                 min_lr=self.config.min_lr,
                 verbose=1,
+                mode='min'
+            ),
+
+            ModelCheckpoint(
+                filepath=Path("artifacts") / 'autoencoder_temp.keras',
+                monitor='val_loss',
+                save_best_only=True,
+                save_weights_only=False,
+                verbose=1,
+                mode='min'
             ),
         ]
 
