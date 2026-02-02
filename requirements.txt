@@ -9,7 +9,7 @@ tensorflow==2.20.0
 onnx==1.17.0
 onnxruntime==1.23.2
 skl2onnx==1.19.1
-tf2onnx==1.16.1
+git+https://github.com/ParrotXray/tensorflow-onnx
 
 matplotlib==3.10.8
 seaborn==0.13.2
