@@ -12,7 +12,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from tensorflow import keras
 from tensorflow.keras import layers, models, regularizers
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from tensorflow.keras.optimizers import Adam
 import joblib
 import matplotlib.pyplot as plt
@@ -20,7 +20,8 @@ import matplotlib.pyplot as plt
 
 class DeepAutoencoder:
     def __init__(self, config: Optional[DeepAutoencoderConfig] = None) -> None:
-        self.raw_data: Optional[pd.DataFrame] = None
+        self.benign_data: Optional[pd.DataFrame] = None
+        self.attack_data: Optional[pd.DataFrame] = None
         self.labels: Optional[pd.Series] = None
 
         self.features: Optional[pd.DataFrame] = None
@@ -44,7 +45,7 @@ class DeepAutoencoder:
         self.rf_probabilities: Optional[np.ndarray] = None
 
         self.ensemble_strategies: Optional[Dict[str, np.ndarray]] = None
-        self.strategy_results: Optional[List[Dict[str, Any]]] = None
+        self.strategy_results: Optional[List[Dict[str, Any]]] = []
         self.best_strategy: Optional[Dict[str, Any]] = None
 
         self.training_history: Optional[keras.callbacks.History] = None
@@ -59,28 +60,38 @@ class DeepAutoencoder:
         self.log.info(f"GPU: {gpus if gpus else 'No GPU detected'}")
 
     def load_data(self) -> None:
-        self.log.info(f"Loading data from outputs/preprocessing.csv...")
-        self.raw_data = pd.read_csv("./outputs/preprocessing.csv")
-        self.raw_data.columns = self.raw_data.columns.str.strip()
-        self.labels = self.raw_data["Label"].copy()
+        self.log.info("Loading data from outputs/preprocessing_benign.csv...")
+        self.benign_data = pd.read_csv("./outputs/preprocessing_benign.csv")
+        self.benign_data.columns = self.benign_data.columns.str.strip()
 
-        benign_count = (self.labels == "BENIGN").sum()
-        attack_count = (self.labels != "BENIGN").sum()
+        self.log.info("Loading data from outputs/preprocessing_attack.csv...")
+        self.attack_data = pd.read_csv("./outputs/preprocessing_attack.csv")
+        self.attack_data.columns = self.attack_data.columns.str.strip()
 
-        print(f"Total samples: {len(self.raw_data):,}")
-        print(f"BENIGN: {benign_count:,}")
-        print(f"Attack: {attack_count:,}")
+        print(f"BENIGN samples: {len(self.benign_data):,}")
+        print(f"Attack samples: {len(self.attack_data):,}")
 
     def prepare_data(self) -> None:
         self.log.info("Preparing data...")
 
-        exclude_cols = ["Label", "anomaly_if"]
-        self.features = self.raw_data.drop(columns=exclude_cols, errors="ignore")
-        self.features = self.features.select_dtypes(include=[np.number])
+        exclude_cols = ["Label"]
 
-        self.binary_labels = (self.labels != "BENIGN").astype(int)
+        self.benign_features = self.benign_data.drop(
+            columns=exclude_cols, errors="ignore"
+        ).select_dtypes(include=[np.number])
 
-        self.benign_features = self.features[self.binary_labels == 0].copy()
+        attack_features = self.attack_data.drop(
+            columns=exclude_cols, errors="ignore"
+        ).select_dtypes(include=[np.number])
+
+        self.features = pd.concat(
+            [self.benign_features, attack_features], ignore_index=True
+        )
+        self.labels = pd.concat(
+            [self.benign_data["Label"], self.attack_data["Label"]], ignore_index=True
+        )
+        self.binary_labels = (~self.labels.isin(["BENIGN", "Benign"])).astype(int)
+
         self.test_features = self.features.copy()
         self.test_labels = self.binary_labels.copy()
 
@@ -179,8 +190,10 @@ class DeepAutoencoder:
             EarlyStopping(
                 monitor="val_loss",
                 patience=self.config.early_stopping_patience,
+                min_delta=1e-6,
                 restore_best_weights=True,
                 verbose=1,
+                mode='min'
             ),
             ReduceLROnPlateau(
                 monitor="val_loss",
@@ -188,6 +201,16 @@ class DeepAutoencoder:
                 patience=self.config.reduce_lr_patience,
                 min_lr=self.config.min_lr,
                 verbose=1,
+                mode='min'
+            ),
+
+            ModelCheckpoint(
+                filepath=Path("artifacts") / 'autoencoder_temp.keras',
+                monitor='val_loss',
+                save_best_only=True,
+                save_weights_only=False,
+                verbose=1,
+                mode='min'
             ),
         ]
 
@@ -237,12 +260,19 @@ class DeepAutoencoder:
     def predict_autoencoder(self) -> None:
         self.log.info("Calculating Deep AE anomaly scores...")
 
-        predictions = self.autoencoder_model.predict(
-            self.test_features_scaled, batch_size=2048, verbose=1
-        )
-        self.ae_mse_scores = np.mean(
-            np.square(self.test_features_scaled - predictions), axis=1
-        )
+        batch_size = 2048
+        n_samples = len(self.test_features_scaled)
+        self.ae_mse_scores = np.zeros(n_samples, dtype=np.float32)
+
+        for start in range(0, n_samples, batch_size):
+            end = min(start + batch_size, n_samples)
+            batch_data = self.test_features_scaled[start:end]
+            batch_pred = self.autoencoder_model.predict(batch_data, verbose=0)
+            self.ae_mse_scores[start:end] = np.mean(
+                np.square(batch_data - batch_pred), axis=1
+            )
+            if (start // batch_size) % 500 == 0:
+                print(f"Progress: {end:,}/{n_samples:,} ({end/n_samples*100:.1f}%)")
 
         ae_mse_benign = self.ae_mse_scores[self.test_labels == 0]
         ae_mse_attack = self.ae_mse_scores[self.test_labels == 1]
@@ -257,6 +287,17 @@ class DeepAutoencoder:
             f"Attack: Mean={ae_mse_attack.mean():.6f}, Median={np.median(ae_mse_attack):.6f}"
         )
         self.log.info(f"Separation: {separation:.2f}x")
+
+        web_attack_mask = self.labels.str.contains("Web Attack", na=False)
+        web_attack_scores = self.ae_mse_scores[web_attack_mask]
+
+        print(f"Web Attack MSE stats:")
+        print(f"  Mean: {web_attack_scores.mean():.6f}")
+        print(f"  Median: {np.median(web_attack_scores):.6f}")
+        print(f"  P99: {np.percentile(web_attack_scores, 99):.6f}")
+
+        benign_scores = self.ae_mse_scores[self.test_labels == 0]
+        print(f"BENIGN MSE P99: {np.percentile(benign_scores, 99):.6f}")
 
     def train_random_forest(self) -> None:
         self.log.info("Training Random Forest...")
@@ -349,18 +390,16 @@ class DeepAutoencoder:
         print(header)
         print("-" * 60)
 
-        self.strategy_results = []
-
         for name, score in self.ensemble_strategies.items():
             thresholds = np.percentile(
-                score[self.test_labels == 0], [90, 92, 94, 95, 96, 97, 98, 99]
+                score[self.test_labels == 0], self.config.percentiles
             )
 
             best_f1 = 0
             best_threshold = None
             best_metrics = None
 
-            for threshold in thresholds:
+            for percentile, threshold in zip(self.config.percentiles, thresholds):
                 pred = (score > threshold).astype(int)
 
                 tp = ((self.test_labels == 1) & (pred == 1)).sum()
@@ -373,7 +412,15 @@ class DeepAutoencoder:
                 prec = tp / (tp + fp) if (tp + fp) > 0 else 0
                 f1 = 2 * prec * tpr / (prec + tpr) if (prec + tpr) > 0 else 0
 
-                if f1 > best_f1 and prec > 0.8 and fpr < 0.02:
+                estimate_fpr_limit = ((100 - percentile) / 100) * 1.5
+
+                if (
+                    f1 > best_f1
+                    and prec > 0.5
+                    and fpr < estimate_fpr_limit
+                    and tpr > 0.90
+                ):
+                    # self.log.info(f"Strict selection criteria: {fpr}, {tpr}")
                     best_f1 = f1
                     best_threshold = threshold
                     best_metrics = {
@@ -428,7 +475,11 @@ class DeepAutoencoder:
     def evaluate_attack_types(self) -> None:
         self.log.info("Attack type detection rates...")
 
-        for attack_type in sorted(self.labels[self.labels != "BENIGN"].unique()):
+        attack_labels = self.labels[
+            ~self.labels.isin(["BENIGN", "Benign"]) & (self.labels.notna())
+        ]
+
+        for attack_type in sorted(attack_labels.unique()):
             mask = self.labels == attack_type
             detected = (
                 self.best_strategy["score"][mask] > self.best_strategy["threshold"]
@@ -457,8 +508,19 @@ class DeepAutoencoder:
         ).astype(int)
         output["Label"] = self.labels.values
 
+        attack_anomaly_mask = (output["ensemble_anomaly"] == 1) & (
+            ~output["Label"].isin(["BENIGN", "Benign"])
+        )
+
+        output_filtered = output[attack_anomaly_mask]
+
+        self.log.info(
+            f"Filtered: {len(output_filtered):,} attack anomalies "
+            f"(from {len(output):,} total samples)"
+        )
+
         output_path = Path("outputs") / "deep_ae_ensemble.csv"
-        output.to_csv(output_path, index=False)
+        output_filtered.to_csv(output_path, index=False)
         self.log.info(f"Saved: {output_path}")
 
         model_ae_path = Path("artifacts") / "deep_autoencoder.keras"

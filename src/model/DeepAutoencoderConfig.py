@@ -19,10 +19,10 @@ class DeepAutoencoderConfig:
     learning_rate: float = 0.001
     clipnorm: float = 1.0
     batch_size: int = 1024
-    epochs: int = 100
+    epochs: int = 150
     validation_split: float = 0.15
     early_stopping_patience: int = 20
-    reduce_lr_patience: int = 7
+    reduce_lr_patience: int = 8
     reduce_lr_factor: float = 0.5
     min_lr: float = 1e-7
 
@@ -37,6 +37,10 @@ class DeepAutoencoderConfig:
 
     ensemble_strategies: List[float] = field(
         default_factory=lambda: [0.4, 0.5, 0.6, 0.7, 0.8]
+    )
+
+    percentiles: List[float] = field(
+        default_factory=lambda: [95.0, 96.0, 97.0, 98.0, 99.0, 99.6]
     )
 
     # output_csv_name: str = "output_deep_ae_ensemble"

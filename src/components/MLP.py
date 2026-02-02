@@ -10,7 +10,7 @@ from imblearn.over_sampling import SMOTE
 from tensorflow.keras.models import Sequential
 from tensorflow.keras import layers, models
 from tensorflow.keras.layers import Dense, Dropout, Input, BatchNormalization
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from tensorflow.keras.optimizers import Adam
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -61,19 +61,19 @@ class MLP:
         self.log: Logger = Logger("MLP")
 
     def load_data(self) -> None:
-        self.log.info(f"Loading data from outputs/deep_ae_ensemble.csv...")
+        self.log.info("Loading data from outputs/deep_ae_ensemble.csv...")
         self.raw_data = pd.read_csv("./outputs/deep_ae_ensemble.csv")
         self.raw_data.columns = self.raw_data.columns.str.strip()
 
         self.log.info(
-            f"Loading preprocessing config from artifacts/deep_ae_ensemble_config.pkl..."
+            "Loading preprocessing config from artifacts/deep_ae_ensemble_config.pkl..."
         )
         ensemble_config = joblib.load("./artifacts/deep_ae_ensemble_config.pkl")
         self.scaler = ensemble_config["scaler"]
         self.clip_params = ensemble_config["clip_params"]
 
-        self.anomaly_data = self.raw_data[self.raw_data["ensemble_anomaly"] == 1].copy()
-        self.log.info(f"Anomaly samples: {len(self.anomaly_data):,}")
+        self.anomaly_data = self.raw_data.copy()
+        self.log.info(f"Attack anomaly samples: {len(self.anomaly_data):,}")
 
     def prepare_features(self) -> None:
         self.log.info("Preparing features...")
@@ -84,31 +84,9 @@ class MLP:
             "rf_proba",
             "ensemble_score",
             "ensemble_anomaly",
-            "anomaly_if",
         ]
         self.features = self.anomaly_data.drop(columns=exclude_cols, errors="ignore")
         self.labels = self.anomaly_data["Label"]
-
-        benign_mask = self.labels == "BENIGN"
-        benign_count = benign_mask.sum()
-
-        if benign_count > 0:
-            self.log.warning(
-                f"Removing {benign_count:,} BENIGN samples "
-                f"({benign_count / len(self.labels) * 100:.2f}%) - likely false positives"
-            )
-
-            self.features = self.features[~benign_mask].reset_index(drop=True)
-            self.labels = self.labels[~benign_mask].reset_index(drop=True)
-
-        # self.log.info("Merging rare attack subtypes...")
-        #
-        # web_attack_mapping = {
-        #     "Web Attack - Brute Force": "Web Attack",
-        #     "Web Attack - Sql Injection": "Web Attack",
-        #     "Web Attack - XSS": "Web Attack",
-        # }
-        # self.labels = self.labels.replace(web_attack_mapping)
 
         min_samples_threshold = 50
 
@@ -211,8 +189,12 @@ class MLP:
             self.label_encoder = LabelEncoder()
             self.label_encoder.fit(remaining_labels)
 
-            train_label_names = [self.label_encoder.classes_[i] for i in self.train_labels]
-            test_label_names = [self.label_encoder.classes_[i] for i in self.test_labels]
+            train_label_names = [
+                self.label_encoder.classes_[i] for i in self.train_labels
+            ]
+            test_label_names = [
+                self.label_encoder.classes_[i] for i in self.test_labels
+            ]
             self.train_labels = self.label_encoder.transform(train_label_names)
             self.test_labels = self.label_encoder.transform(test_label_names)
 
@@ -319,17 +301,28 @@ class MLP:
 
         callbacks = [
             EarlyStopping(
-                monitor="val_loss",
+                monitor='val_accuracy',
                 patience=self.config.early_stopping_patience,
+                min_delta=1e-4,
                 restore_best_weights=True,
                 verbose=1,
+                mode='max'
             ),
             ReduceLROnPlateau(
-                monitor="val_loss",
+                monitor='val_accuracy',
                 factor=self.config.reduce_lr_factor,
                 patience=self.config.reduce_lr_patience,
                 min_lr=self.config.min_lr,
                 verbose=1,
+                mode='max'
+            ),
+            ModelCheckpoint(
+                filepath=Path("artifacts") / 'classifier_temp.keras',
+                monitor='val_accuracy',
+                save_best_only=True,
+                save_weights_only=False,
+                verbose=1,
+                mode='max'
             ),
         ]
 

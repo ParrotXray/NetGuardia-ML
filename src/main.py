@@ -3,6 +3,7 @@
 from components import DataPreprocess, DeepAutoencoder, MLP, Exporter
 from utils import Logger
 import time
+from datetime import timedelta
 import argparse
 
 if __name__ == "__main__":
@@ -11,6 +12,9 @@ if __name__ == "__main__":
     start = time.perf_counter()
 
     parser = argparse.ArgumentParser(description="Training net-guardia models")
+
+    parser.add_argument("-s", "--set", help="Select Dataset year")
+
     parser.add_argument("-a", "--all", action="store_true", help="ALL")
     parser.add_argument(
         "-dp", "--datapreprocess", action="store_true", help="DataPreprocess"
@@ -28,11 +32,10 @@ if __name__ == "__main__":
 
     if args.all or args.datapreprocess:
         log.info("Start processing data...")
-        dp = DataPreprocess()
-        dp.load_datasets("./raw_data")
-        dp.merge_dataset()
+        dp = DataPreprocess(args.set)
+        dp.load_datasets()
+        dp.statistics_dataset()
         dp.feature_preparation()
-        dp.anomaly_detection()
         dp.output_result()
 
         time.sleep(3)
@@ -87,4 +90,4 @@ if __name__ == "__main__":
 
     end = time.perf_counter()
 
-    log.info(f"Execution time: {end - start}s")
+    log.info(f"Execution time: {timedelta(seconds=(end - start))}")
