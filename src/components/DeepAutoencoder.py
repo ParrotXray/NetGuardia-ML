@@ -193,7 +193,7 @@ class DeepAutoencoder:
                 min_delta=1e-6,
                 restore_best_weights=True,
                 verbose=1,
-                mode='min'
+                mode="min",
             ),
             ReduceLROnPlateau(
                 monitor="val_loss",
@@ -201,16 +201,15 @@ class DeepAutoencoder:
                 patience=self.config.reduce_lr_patience,
                 min_lr=self.config.min_lr,
                 verbose=1,
-                mode='min'
+                mode="min",
             ),
-
             ModelCheckpoint(
-                filepath=Path("artifacts") / 'autoencoder_temp.keras',
-                monitor='val_loss',
+                filepath=Path("artifacts") / "autoencoder_temp.keras",
+                monitor="val_loss",
                 save_best_only=True,
                 save_weights_only=False,
                 verbose=1,
-                mode='min'
+                mode="min",
             ),
         ]
 

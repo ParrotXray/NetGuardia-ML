@@ -301,28 +301,28 @@ class MLP:
 
         callbacks = [
             EarlyStopping(
-                monitor='val_accuracy',
+                monitor="val_accuracy",
                 patience=self.config.early_stopping_patience,
                 min_delta=1e-4,
                 restore_best_weights=True,
                 verbose=1,
-                mode='max'
+                mode="max",
             ),
             ReduceLROnPlateau(
-                monitor='val_accuracy',
+                monitor="val_accuracy",
                 factor=self.config.reduce_lr_factor,
                 patience=self.config.reduce_lr_patience,
                 min_lr=self.config.min_lr,
                 verbose=1,
-                mode='max'
+                mode="max",
             ),
             ModelCheckpoint(
-                filepath=Path("artifacts") / 'classifier_temp.keras',
-                monitor='val_accuracy',
+                filepath=Path("artifacts") / "classifier_temp.keras",
+                monitor="val_accuracy",
                 save_best_only=True,
                 save_weights_only=False,
                 verbose=1,
-                mode='max'
+                mode="max",
             ),
         ]
 
