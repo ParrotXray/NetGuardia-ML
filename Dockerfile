@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu22.04
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu24.04
 
 LABEL authors="ParrotXray"
 LABEL description="NetGuardia for training models"
@@ -9,12 +9,12 @@ ENV TZ=Asia/Taipei
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.11 \
-    python3.11-venv \
+    python3.12 \
+    python3.12-venv \
     python3-pip \
     git \
     tini \
-    && ln -sf /usr/bin/python3.11 /usr/bin/python \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python \
     && ln -sf /usr/bin/pip3 /usr/bin/pip \
     && rm -rf /var/lib/apt/lists/*
 
