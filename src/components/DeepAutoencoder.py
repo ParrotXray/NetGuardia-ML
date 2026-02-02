@@ -288,6 +288,17 @@ class DeepAutoencoder:
         )
         self.log.info(f"Separation: {separation:.2f}x")
 
+        web_attack_mask = self.labels.str.contains("Web Attack", na=False)
+        web_attack_scores = self.ae_mse_scores[web_attack_mask]
+
+        print(f"Web Attack MSE stats:")
+        print(f"  Mean: {web_attack_scores.mean():.6f}")
+        print(f"  Median: {np.median(web_attack_scores):.6f}")
+        print(f"  P99: {np.percentile(web_attack_scores, 99):.6f}")
+
+        benign_scores = self.ae_mse_scores[self.test_labels == 0]
+        print(f"BENIGN MSE P99: {np.percentile(benign_scores, 99):.6f}")
+
     def train_random_forest(self) -> None:
         self.log.info("Training Random Forest...")
 

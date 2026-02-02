@@ -40,7 +40,7 @@ class DeepAutoencoderConfig:
     )
 
     percentiles: List[float] = field(
-        default_factory=lambda: [96.0, 97.0, 98.0, 99.0, 99.5, 99.7]
+        default_factory=lambda: [95.0, 96.0, 97.0, 98.0, 99.0, 99.6]
     )
 
     # output_csv_name: str = "output_deep_ae_ensemble"
