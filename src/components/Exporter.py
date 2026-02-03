@@ -153,10 +153,6 @@ class Exporter:
             do_constant_folding=True,
             input_names=["input"],
             output_names=["output"],
-            dynamic_axes={
-                "input": {0: "batch_size"},
-                "output": {0: "batch_size"},
-            },
         )
 
         self.log.info(f"Saved: {self.deep_ae_onnx_path}")
@@ -212,10 +208,6 @@ class Exporter:
             do_constant_folding=True,
             input_names=["input"],
             output_names=["output"],
-            dynamic_axes={
-                "input": {0: "batch_size"},
-                "output": {0: "batch_size"},
-            },
         )
 
         self.log.info(f"Saved: {self.mlp_onnx_path}")

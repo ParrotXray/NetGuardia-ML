@@ -19,12 +19,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -i https://pypi.org/simple -r requirements.txt
 
 COPY src/ ./src/
+COPY entrypoint.sh .
 
-WORKDIR /app/src
+RUN chmod +x ./entrypoint.sh ./src/main.py
 
-RUN chmod +x main.py
+WORKDIR /app
 
-CMD ["/usr/bin/tini", "--", "./main.py", "--help"]
+ENV DATASET=""
+ENV ALL="false"
+ENV DATAPREPROCESS="false"
+ENV DEEPAUTOENCODER="false"
+ENV MLP="false"
+ENV EXPORT="false"
+
+
+ENTRYPOINT ["/usr/bin/tini", "--", "./entrypoint.sh"]
+CMD []

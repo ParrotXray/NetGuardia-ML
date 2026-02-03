@@ -11,6 +11,7 @@ lightning[extra]<=2.6.1
 onnx<=1.20.1
 onnxruntime<=1.23.2
 skl2onnx<=1.20.0
+onnxscript<=0.6.0
 
 matplotlib<=3.10.8
 seaborn<=0.13.2
