@@ -158,8 +158,6 @@ After training, the following directories will contain outputs:
 | `plots/` | Training visualizations and analysis plots |
 | `exports/` | Exporting ONNX models |
 
-This project is provided for educational and research purposes.
-
 ## Acknowledgments
 
 - Canadian Institute for Cybersecurity for the CIC-IDS datasets
