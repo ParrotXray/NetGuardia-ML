@@ -103,8 +103,13 @@ class DeepAutoencoderConfig:
 
     # Anomaly Score Thresholds
     percentiles: List[float] = field(
-        default_factory=lambda: [95.0, 96.0, 97.0, 98.0, 99.0, 99.6]
+        default_factory=lambda: [97.0, 98.0, 99.0, 99.5, 99.7, 99.9]
     )
+
+    # Confidence Thresholds (for reducing sensitivity)
+    min_precision: float = 0.6  # Minimum precision required (higher = less sensitive)
+    min_tpr: float = 0.80  # Minimum true positive rate (lower = allows more missed attacks)
+    strategy_selection: str = "median"  # "max" for highest F1, "median" for balanced
 
     # output_csv_name: str = "output_deep_ae_ensemble"
     # output_model_ae: str = "deep_autoencoder"
