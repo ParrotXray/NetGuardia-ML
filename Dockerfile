@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.12 \
     python3.12-venv \
     python3-pip \
+    build-essential \
     git \
     tini \
     && ln -sf /usr/bin/python3.12 /usr/bin/python \
