@@ -108,7 +108,9 @@ class DeepAutoencoderConfig:
 
     # Confidence Thresholds (for reducing sensitivity)
     min_precision: float = 0.6  # Minimum precision required (higher = less sensitive)
-    min_tpr: float = 0.80  # Minimum true positive rate (lower = allows more missed attacks)
+    min_tpr: float = (
+        0.80  # Minimum true positive rate (lower = allows more missed attacks)
+    )
     strategy_selection: str = "max"  # "max" for highest F1, "median" for balanced
 
     # output_csv_name: str = "output_deep_ae_ensemble"

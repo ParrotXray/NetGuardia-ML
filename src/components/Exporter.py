@@ -263,7 +263,9 @@ class Exporter:
             ae_normalization_json = {
                 "min": float(self.ae_normalization["min"]),
                 "max": float(self.ae_normalization["max"]),
-                "norm_max": float(self.ae_normalization.get("norm_max", self.ae_normalization["max"])),
+                "norm_max": float(
+                    self.ae_normalization.get("norm_max", self.ae_normalization["max"])
+                ),
                 "mean": float(self.ae_normalization["mean"]),
                 "std": float(self.ae_normalization["std"]),
                 "median": float(self.ae_normalization.get("median", 0.0)),

@@ -630,7 +630,7 @@ class DeepAutoencoder:
             raise ValueError(
                 f"Invalid strategy_selection: {self.config.strategy_selection}"
             )
-        
+
         best_score = self.best_strategy["score"]
         precision_levels = {}
         for percentile in self.config.percentiles:
@@ -654,7 +654,9 @@ class DeepAutoencoder:
         print(f"F1: {self.best_strategy['f1']:.3f}")
         print(f"\nPrecision Levels (for confidence output):")
         for level, data in precision_levels.items():
-            print(f"  {level}: threshold={data['threshold']:.4f}, precision={data['precision']:.1%}")
+            print(
+                f"  {level}: threshold={data['threshold']:.4f}, precision={data['precision']:.1%}"
+            )
         print(f"{'=' * 60}\n")
 
     def evaluate_attack_types(self) -> None:
