@@ -79,7 +79,7 @@ class DeepAutoencoderConfig:
     learning_rate: float = 0.001
     clipnorm: float = 1.0
     batch_size: int = 1024
-    epochs: int = 250
+    epochs: int = 350
     validation_split: float = 0.15
     early_stopping_patience: int = 20
     reduce_lr_patience: int = 8
@@ -109,7 +109,7 @@ class DeepAutoencoderConfig:
     # Confidence Thresholds (for reducing sensitivity)
     min_precision: float = 0.6  # Minimum precision required (higher = less sensitive)
     min_tpr: float = 0.80  # Minimum true positive rate (lower = allows more missed attacks)
-    strategy_selection: str = "median"  # "max" for highest F1, "median" for balanced
+    strategy_selection: str = "max"  # "max" for highest F1, "median" for balanced
 
     # output_csv_name: str = "output_deep_ae_ensemble"
     # output_model_ae: str = "deep_autoencoder"
