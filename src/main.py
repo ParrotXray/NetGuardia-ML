@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
-from components import DataPreprocess, DeepAutoencoder, MLP, Exporter
-from utils import Logger
+import argparse
 import time
 from datetime import timedelta
-import argparse
+
+from components import MLP, DataPreprocess, DeepAutoencoder, Exporter
+from utils import Logger
 
 if __name__ == "__main__":
     log = Logger("Main")
@@ -41,7 +42,7 @@ if __name__ == "__main__":
         time.sleep(3)
 
     if args.all or args.deepautoencoder:
-        log.info("Start Deep Autoencoder...")
+        log.info("Start Deep Autoencoder + Isolation Forest...")
         da = DeepAutoencoder()
         da.check_tensorflow()
         da.load_data()
@@ -49,11 +50,10 @@ if __name__ == "__main__":
         da.preprocess_data()
         da.build_autoencoder()
         da.train_autoencoder()
-        da.calculate_ae_normalization()
-        da.predict_autoencoder()
-        da.train_random_forest()
-        da.create_ensemble_strategies()
-        da.evaluate_strategies()
+        da.extract_latent_features()
+        da.train_isolation_forest()
+        da.predict_isolation_forest()
+        da.evaluate_detection()
         da.evaluate_attack_types()
         da.save_results()
         da.generate_visualizations()
@@ -80,8 +80,8 @@ if __name__ == "__main__":
         log.info("Export models to onnx...")
         ep = Exporter()
         ep.load_models()
-        ep.export_deep_ae_onnx()
-        ep.export_rf_onnx()
+        ep.export_encoder_onnx()
+        ep.export_if_onnx()
         ep.export_mlp_onnx()
         ep.build_config_json()
         ep.save_config_json()

@@ -1,24 +1,23 @@
 import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import joblib
+import lightning as L
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
-import lightning as L
+from lightning.pytorch.callbacks import (EarlyStopping, LearningRateMonitor,
+                                         ModelCheckpoint)
 from lightning.pytorch.loggers import CSVLogger
-from lightning.pytorch.callbacks import (
-    EarlyStopping,
-    ModelCheckpoint,
-    LearningRateMonitor,
-)
-from typing import List, Optional, Dict, Any
-from pathlib import Path
-from utils import Logger
-from model import DeepAutoencoderConfig
-import numpy as np
+from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier
-import joblib
-import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader, TensorDataset
+
+from model import DeepAutoencoderConfig
+from utils import Logger
 
 
 class AutoencoderModel(nn.Module):
@@ -162,16 +161,15 @@ class DeepAutoencoder:
 
         self.autoencoder_model: Optional[AutoencoderModel] = None
         self.lightning_module: Optional[AutoencoderLightningModule] = None
-        self.random_forest_model: Optional[RandomForestClassifier] = None
+        self.isolation_forest_model: Optional[IsolationForest] = None
 
-        self.ae_normalization_params: Optional[Dict[str, float]] = None
-        self.ae_mse_scores: Optional[np.ndarray] = None
+        self.latent_benign: Optional[np.ndarray] = None
+        self.latent_test: Optional[np.ndarray] = None
 
-        self.rf_probabilities: Optional[np.ndarray] = None
+        self.if_predictions: Optional[np.ndarray] = None
+        self.if_scores: Optional[np.ndarray] = None
 
-        self.ensemble_strategies: Optional[Dict[str, np.ndarray]] = None
-        self.strategy_results: Optional[List[Dict[str, Any]]] = []
-        self.best_strategy: Optional[Dict[str, Any]] = None
+        self.if_metrics: Optional[Dict[str, Any]] = None
 
         self.training_history: Optional[Dict[str, List[float]]] = None
 
@@ -380,284 +378,142 @@ class DeepAutoencoder:
         print(f"Training completed: {epochs_trained} epochs")
         print(f"Best validation loss: {callbacks[1].best_model_score:.6f}")
 
-    def calculate_ae_normalization(self) -> None:
-        self.log.info("Calculating AE normalization parameters...")
-
-        self.lightning_module.eval()
-        self.lightning_module.to(self.device)
-
-        with torch.no_grad():
-            benign_tensor = torch.FloatTensor(self.benign_features_scaled).to(
-                self.device
-            )
-            batch_size = 2048
-            ae_reconstructions = []
-
-            for i in range(0, len(benign_tensor), batch_size):
-                batch = benign_tensor[i : i + batch_size]
-                recon = self.lightning_module(batch)
-                ae_reconstructions.append(recon.cpu().numpy())
-
-            ae_reconstructions = np.vstack(ae_reconstructions)
-
-        ae_mse_benign = np.mean(
-            np.square(self.benign_features_scaled - ae_reconstructions), axis=1
-        )
-
-        self.ae_normalization_params = {
-            "min": float(ae_mse_benign.min()),
-            "max": float(ae_mse_benign.max()),
-            "norm_max": float(np.percentile(ae_mse_benign, 99)),
-            "mean": float(ae_mse_benign.mean()),
-            "std": float(ae_mse_benign.std()),
-            "median": float(np.median(ae_mse_benign)),
-            "p90": float(np.percentile(ae_mse_benign, 90)),
-            "p95": float(np.percentile(ae_mse_benign, 95)),
-            "p99": float(np.percentile(ae_mse_benign, 99)),
-        }
-
-        print(f"AE MSE statistics (BENIGN training set):")
-        for key, value in self.ae_normalization_params.items():
-            print(f"{key.upper()}: {value:.6f}")
-
-    def predict_autoencoder(self) -> None:
-        self.log.info("Calculating Deep AE anomaly scores...")
+    def extract_latent_features(self) -> None:
+        self.log.info("Extracting latent features via AE encoder...")
 
         self.lightning_module.eval()
         self.lightning_module.to(self.device)
 
         batch_size = 2048
-        n_samples = len(self.test_features_scaled)
-        self.ae_mse_scores = np.zeros(n_samples, dtype=np.float32)
 
         with torch.no_grad():
-            for start in range(0, n_samples, batch_size):
-                end = min(start + batch_size, n_samples)
-                batch_data = torch.FloatTensor(self.test_features_scaled[start:end]).to(
-                    self.device
-                )
-                batch_pred = self.lightning_module(batch_data).cpu().numpy()
-                self.ae_mse_scores[start:end] = np.mean(
-                    np.square(self.test_features_scaled[start:end] - batch_pred), axis=1
-                )
-                if (start // batch_size) % 500 == 0:
-                    print(f"Progress: {end:,}/{n_samples:,} ({end/n_samples*100:.1f}%)")
+            # Extract latent features for benign (training) data
+            latent_benign_parts = []
+            for i in range(0, len(self.benign_features_scaled), batch_size):
+                batch = torch.FloatTensor(
+                    self.benign_features_scaled[i : i + batch_size]
+                ).to(self.device)
+                latent = self.autoencoder_model.encode(batch)
+                latent_benign_parts.append(latent.cpu().numpy())
+            self.latent_benign = np.vstack(latent_benign_parts)
 
-        ae_mse_benign = self.ae_mse_scores[self.test_labels == 0]
-        ae_mse_attack = self.ae_mse_scores[self.test_labels == 1]
+            # Extract latent features for test (all) data
+            latent_test_parts = []
+            for i in range(0, len(self.test_features_scaled), batch_size):
+                batch = torch.FloatTensor(
+                    self.test_features_scaled[i : i + batch_size]
+                ).to(self.device)
+                latent = self.autoencoder_model.encode(batch)
+                latent_test_parts.append(latent.cpu().numpy())
+            self.latent_test = np.vstack(latent_test_parts)
 
-        separation = ae_mse_attack.mean() / ae_mse_benign.mean()
+        print(f"Original feature dim: {self.benign_features_scaled.shape[1]}")
+        print(f"Latent feature dim: {self.latent_benign.shape[1]}")
+        print(f"Benign latent samples: {self.latent_benign.shape[0]:,}")
+        print(f"Test latent samples: {self.latent_test.shape[0]:,}")
 
-        print(f"AE MSE statistics (test set):")
-        self.log.info(
-            f"BENIGN: Mean={ae_mse_benign.mean():.6f}, Median={np.median(ae_mse_benign):.6f}"
-        )
-        self.log.info(
-            f"Attack: Mean={ae_mse_attack.mean():.6f}, Median={np.median(ae_mse_attack):.6f}"
-        )
-        self.log.info(f"Separation: {separation:.2f}x")
+    def train_isolation_forest(self) -> None:
+        self.log.info("Training Isolation Forest on latent space...")
 
-        web_attack_mask = self.labels.str.contains("Web Attack", na=False)
-        web_attack_scores = self.ae_mse_scores[web_attack_mask]
-
-        print(f"Web Attack MSE stats:")
-        print(f"  Mean: {web_attack_scores.mean():.6f}")
-        print(f"  Median: {np.median(web_attack_scores):.6f}")
-        print(f"  P99: {np.percentile(web_attack_scores, 99):.6f}")
-
-        benign_scores = self.ae_mse_scores[self.test_labels == 0]
-        print(f"BENIGN MSE P99: {np.percentile(benign_scores, 99):.6f}")
-
-    def train_random_forest(self) -> None:
-        self.log.info("Training Random Forest...")
-
-        benign_indices = np.where(self.binary_labels == 0)[0]
-        attack_indices = np.where(self.binary_labels == 1)[0]
-
-        n_samples = min(self.config.rf_train_samples, len(attack_indices))
-        benign_sample = np.random.choice(benign_indices, n_samples, replace=False)
-        attack_sample = np.random.choice(attack_indices, n_samples, replace=False)
-
-        train_indices = np.concatenate([benign_sample, attack_sample])
-        np.random.shuffle(train_indices)
-
-        rf_train_features = self.test_features_scaled[train_indices]
-        rf_train_labels = self.test_labels.iloc[train_indices]
-
-        self.log.info(
-            f"RF training data: {len(rf_train_features):,} "
-            f"(BENIGN: {n_samples:,}, Attack: {n_samples:,})"
-        )
-
-        self.random_forest_model = RandomForestClassifier(
-            n_estimators=self.config.rf_n_estimators,
-            max_depth=self.config.rf_max_depth,
-            min_samples_split=self.config.rf_min_samples_split,
-            min_samples_leaf=self.config.rf_min_samples_leaf,
-            max_features=self.config.rf_max_features,
-            n_jobs=self.config.rf_n_jobs,
-            random_state=self.config.rf_random_state,
+        self.isolation_forest_model = IsolationForest(
+            n_estimators=self.config.if_n_estimators,
+            contamination=self.config.if_contamination,
+            max_samples=self.config.if_max_samples,
+            max_features=self.config.if_max_features,
+            random_state=self.config.if_random_state,
             verbose=1,
+            n_jobs=-1,
         )
 
-        self.random_forest_model.fit(rf_train_features, rf_train_labels)
-        self.log.info("RF training completed")
+        self.isolation_forest_model.fit(self.latent_benign)
+        self.log.info("Isolation Forest training completed on latent space")
 
-        self.rf_probabilities = self.random_forest_model.predict_proba(
-            self.test_features_scaled
-        )[:, 1]
-        self.log.info("RF prediction completed")
+        print(f"IF trained on {self.latent_benign.shape[0]:,} benign latent samples")
+        print(f"Latent dimensions: {self.latent_benign.shape[1]}")
 
-    def create_ensemble_strategies(self) -> None:
-        self.log.info("Creating Ensemble strategies...")
+    def predict_isolation_forest(self) -> None:
+        self.log.info("Running Isolation Forest predictions on latent space...")
 
-        ae_scores_normalized = (
-            self.ae_mse_scores - self.ae_normalization_params["min"]
-        ) / (
-            self.ae_normalization_params["norm_max"]
-            - self.ae_normalization_params["min"]
-            + 1e-10
+        # IF predictions: 1 = normal (inlier), -1 = anomaly (outlier)
+        self.if_predictions = self.isolation_forest_model.predict(self.latent_test)
+        # IF scores: more negative = more anomalous
+        self.if_scores = self.isolation_forest_model.score_samples(self.latent_test)
+
+        n_anomalies = (self.if_predictions == -1).sum()
+        n_normal = (self.if_predictions == 1).sum()
+
+        print(f"IF predictions: {n_normal:,} normal, {n_anomalies:,} anomalies")
+        print(
+            f"IF score range: [{self.if_scores.min():.4f}, {self.if_scores.max():.4f}]"
         )
-        ae_scores_normalized = np.clip(ae_scores_normalized, 0, 1)
-        rf_scores_normalized = self.rf_probabilities
+        print(f"IF score mean: {self.if_scores.mean():.4f}")
+        print(f"IF score median: {np.median(self.if_scores):.4f}")
 
-        self.log.info(
-            f"AE Score normalized range: "
-            f"[{ae_scores_normalized.min():.4f}, {ae_scores_normalized.max():.4f}]"
-        )
-        self.log.info(
-            f"RF Score range: "
-            f"[{rf_scores_normalized.min():.4f}, {rf_scores_normalized.max():.4f}]"
-        )
+    def evaluate_detection(self) -> None:
+        self.log.info("Evaluating anomaly detection performance...")
 
-        self.ensemble_strategies = {}
+        # IF: -1 = anomaly, 1 = normal
+        # Binary: 1 = attack, 0 = benign
+        pred_anomaly = (self.if_predictions == -1).astype(int)
+        true_attack = self.test_labels.values
 
-        for ae_weight in self.config.ensemble_strategies:
-            rf_weight = 1 - ae_weight
-            name = f"W_{int(ae_weight * 10)}:{int(rf_weight * 10)}"
-            self.ensemble_strategies[name] = (
-                ae_weight * ae_scores_normalized + rf_weight * rf_scores_normalized
-            )
+        tp = ((true_attack == 1) & (pred_anomaly == 1)).sum()
+        fp = ((true_attack == 0) & (pred_anomaly == 1)).sum()
+        fn = ((true_attack == 1) & (pred_anomaly == 0)).sum()
+        tn = ((true_attack == 0) & (pred_anomaly == 0)).sum()
 
-        self.ensemble_strategies["Max"] = np.maximum(
-            ae_scores_normalized, rf_scores_normalized
-        )
-        self.ensemble_strategies["Min"] = np.minimum(
-            ae_scores_normalized, rf_scores_normalized
-        )
-        self.ensemble_strategies["Product"] = (
-            ae_scores_normalized * rf_scores_normalized
-        )
-        self.ensemble_strategies["Average"] = (
-            ae_scores_normalized + rf_scores_normalized
-        ) / 2
+        tpr = tp / (tp + fn) if (tp + fn) > 0 else 0
+        fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        f1 = 2 * precision * tpr / (precision + tpr) if (precision + tpr) > 0 else 0
 
-    def evaluate_strategies(self) -> None:
-        self.log.info("Evaluating strategies...")
+        self.if_metrics = {
+            "tp": int(tp),
+            "fp": int(fp),
+            "fn": int(fn),
+            "tn": int(tn),
+            "tpr": float(tpr),
+            "fpr": float(fpr),
+            "precision": float(precision),
+            "f1": float(f1),
+        }
 
-        header = f"{'Strategy':<12} {'Threshold':>10} {'TPR':>7} {'FPR':>7} {'Prec':>7} {'F1':>7}"
+        print(f"\n{'=' * 60}")
+        print(f"AE (Encoder) -> IF (Latent Space) Detection Results")
+        print(f"{'=' * 60}")
+        print(f"TP: {tp:,}  FP: {fp:,}")
+        print(f"FN: {fn:,}  TN: {tn:,}")
+        print(f"TPR (Recall): {tpr:.2%}")
+        print(f"FPR: {fpr:.2%}")
+        print(f"Precision: {precision:.3f}")
+        print(f"F1-Score: {f1:.3f}")
+        print(f"{'=' * 60}\n")
+
+        # Score-based threshold evaluation
+        print("Score-based threshold analysis:")
+        header = f"{'Percentile':>12} {'Threshold':>10} {'TPR':>7} {'FPR':>7} {'Prec':>7} {'F1':>7}"
         print(header)
         print("-" * 60)
 
-        for name, score in self.ensemble_strategies.items():
-            thresholds = np.percentile(
-                score[self.test_labels == 0], self.config.percentiles
-            )
-
-            best_f1 = 0
-            best_threshold = None
-            best_metrics = None
-
-            for percentile, threshold in zip(self.config.percentiles, thresholds):
-                pred = (score > threshold).astype(int)
-
-                tp = ((self.test_labels == 1) & (pred == 1)).sum()
-                fp = ((self.test_labels == 0) & (pred == 1)).sum()
-                fn = ((self.test_labels == 1) & (pred == 0)).sum()
-                tn = ((self.test_labels == 0) & (pred == 0)).sum()
-
-                tpr = tp / (tp + fn) if (tp + fn) > 0 else 0
-                fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
-                prec = tp / (tp + fp) if (tp + fp) > 0 else 0
-                f1 = 2 * prec * tpr / (prec + tpr) if (prec + tpr) > 0 else 0
-
-                estimate_fpr_limit = ((100 - percentile) / 100) * 1.5
-
-                if (
-                    f1 > best_f1
-                    and prec > self.config.min_precision
-                    and fpr < estimate_fpr_limit
-                    and tpr > self.config.min_tpr
-                ):
-                    best_f1 = f1
-                    best_threshold = threshold
-                    best_metrics = {
-                        "tp": int(tp),
-                        "fp": int(fp),
-                        "fn": int(fn),
-                        "tn": int(tn),
-                        "tpr": float(tpr),
-                        "fpr": float(fpr),
-                        "precision": float(prec),
-                        "f1": float(f1),
-                    }
-
-            if best_metrics:
-                result_line = (
-                    f"{name:<12} {best_threshold:>10.4f} {best_metrics['tpr']:>6.1%} "
-                    f"{best_metrics['fpr']:>6.1%} {best_metrics['precision']:>6.2f} "
-                    f"{best_metrics['f1']:>6.3f}"
-                )
-                print(result_line)
-
-                self.strategy_results.append(
-                    {
-                        "name": name,
-                        "score": score,
-                        "threshold": best_threshold,
-                        **best_metrics,
-                    }
-                )
-
-        sorted_results = sorted(self.strategy_results, key=lambda x: x["f1"])
-        if self.config.strategy_selection in ["median", "max"]:
-            if self.config.strategy_selection == "median":
-                median_idx = len(sorted_results) // 2
-                self.best_strategy = sorted_results[median_idx]
-            else:
-                self.best_strategy = sorted_results[-1]  # max F1
-        else:
-            raise ValueError(
-                f"Invalid strategy_selection: {self.config.strategy_selection}"
-            )
-
-        best_score = self.best_strategy["score"]
-        precision_levels = {}
+        benign_scores = self.if_scores[true_attack == 0]
         for percentile in self.config.percentiles:
-            thresh = np.percentile(best_score[self.test_labels == 0], percentile)
-            pred = (best_score > thresh).astype(int)
-            tp = ((self.test_labels == 1) & (pred == 1)).sum()
-            fp = ((self.test_labels == 0) & (pred == 1)).sum()
-            prec = tp / (tp + fp) if (tp + fp) > 0 else 0
-            precision_levels[f"p{percentile}"] = {
-                "threshold": float(thresh),
-                "precision": float(prec),
-            }
-        self.best_strategy["precision_levels"] = precision_levels
+            threshold = np.percentile(benign_scores, 100 - percentile)
+            pred = (self.if_scores < threshold).astype(int)
 
-        print(f"\n{'=' * 60}")
-        print(f"Best strategy: {self.best_strategy['name']}")
-        print(f"Threshold: {self.best_strategy['threshold']:.4f}")
-        print(f"TPR: {self.best_strategy['tpr']:.2%}")
-        print(f"FPR: {self.best_strategy['fpr']:.2%}")
-        print(f"Precision: {self.best_strategy['precision']:.3f}")
-        print(f"F1: {self.best_strategy['f1']:.3f}")
-        print(f"\nPrecision Levels (for confidence output):")
-        for level, data in precision_levels.items():
+            tp_t = ((true_attack == 1) & (pred == 1)).sum()
+            fp_t = ((true_attack == 0) & (pred == 1)).sum()
+            fn_t = ((true_attack == 1) & (pred == 0)).sum()
+            tn_t = ((true_attack == 0) & (pred == 0)).sum()
+
+            tpr_t = tp_t / (tp_t + fn_t) if (tp_t + fn_t) > 0 else 0
+            fpr_t = fp_t / (fp_t + tn_t) if (fp_t + tn_t) > 0 else 0
+            prec_t = tp_t / (tp_t + fp_t) if (tp_t + fp_t) > 0 else 0
+            f1_t = 2 * prec_t * tpr_t / (prec_t + tpr_t) if (prec_t + tpr_t) > 0 else 0
+
             print(
-                f"  {level}: threshold={data['threshold']:.4f}, precision={data['precision']:.1%}"
+                f"p{percentile:>10} {threshold:>10.4f} {tpr_t:>6.1%} "
+                f"{fpr_t:>6.1%} {prec_t:>6.2f} {f1_t:>6.3f}"
             )
-        print(f"{'=' * 60}\n")
 
     def evaluate_attack_types(self) -> None:
         self.log.info("Attack type detection rates...")
@@ -668,9 +524,8 @@ class DeepAutoencoder:
 
         for attack_type in sorted(attack_labels.unique()):
             mask = self.labels == attack_type
-            detected = (
-                self.best_strategy["score"][mask] > self.best_strategy["threshold"]
-            ).sum()
+            # IF: -1 = anomaly (detected)
+            detected = (self.if_predictions[mask] == -1).sum()
             total = mask.sum()
             rate = detected / total if total > 0 else 0
 
@@ -687,15 +542,12 @@ class DeepAutoencoder:
         os.makedirs("./outputs", exist_ok=True)
 
         output = self.features.copy()
-        output["deep_ae_mse"] = self.ae_mse_scores
-        output["rf_proba"] = self.rf_probabilities
-        output["ensemble_score"] = self.best_strategy["score"]
-        output["ensemble_anomaly"] = (
-            self.best_strategy["score"] > self.best_strategy["threshold"]
-        ).astype(int)
+        output["if_score"] = self.if_scores
+        output["if_prediction"] = self.if_predictions
         output["Label"] = self.labels.values
 
-        attack_anomaly_mask = (output["ensemble_anomaly"] == 1) & (
+        # Filter: only attack samples detected as anomalies by IF
+        attack_anomaly_mask = (output["if_prediction"] == -1) & (
             ~output["Label"].isin(["BENIGN", "Benign"])
         )
 
@@ -706,7 +558,7 @@ class DeepAutoencoder:
             f"(from {len(output):,} total samples)"
         )
 
-        output_path = Path("outputs") / "deep_ae_ensemble.csv"
+        output_path = Path("outputs") / "deep_ae_if.csv"
         output_filtered.to_csv(output_path, index=False)
         self.log.info(f"Saved: {output_path}")
 
@@ -724,19 +576,17 @@ class DeepAutoencoder:
         )
         self.log.info(f"Saved: {model_ae_path}")
 
-        model_rf_path = Path("artifacts") / "random_forest.pkl"
-        joblib.dump(self.random_forest_model, model_rf_path)
-        self.log.info(f"Saved: {model_rf_path}")
+        model_if_path = Path("artifacts") / "isolation_forest.pkl"
+        joblib.dump(self.isolation_forest_model, model_if_path)
+        self.log.info(f"Saved: {model_if_path}")
 
         config_data = {
             "scaler": self.scaler,
             "clip_params": self.clip_params,
-            "best": self.best_strategy,
-            "results": self.strategy_results,
+            "if_metrics": self.if_metrics,
             "encoding_dim": self.config.encoding_dim,
-            "ae_normalization": self.ae_normalization_params,
         }
-        config_path = Path("artifacts") / "deep_ae_ensemble_config.pkl"
+        config_path = Path("artifacts") / "deep_ae_if_config.pkl"
         joblib.dump(config_data, config_path)
 
         self.log.info(f"Saved: {config_path}")
@@ -748,6 +598,7 @@ class DeepAutoencoder:
 
         fig, axes = plt.subplots(2, 3, figsize=(18, 10))
 
+        # Plot 1: Training placeholder
         ax = axes[0, 0]
         ax.text(
             0.5,
@@ -762,10 +613,11 @@ class DeepAutoencoder:
         ax.set_title("Deep AE Training History")
         ax.grid(alpha=0.3)
 
+        # Plot 2: IF score distribution (benign vs attack)
         ax = axes[0, 1]
         bins = 50
         ax.hist(
-            self.best_strategy["score"][self.test_labels == 0],
+            self.if_scores[self.test_labels == 0],
             bins=bins,
             alpha=0.7,
             label="BENIGN",
@@ -773,45 +625,44 @@ class DeepAutoencoder:
             density=True,
         )
         ax.hist(
-            self.best_strategy["score"][self.test_labels == 1],
+            self.if_scores[self.test_labels == 1],
             bins=bins,
             alpha=0.7,
             label="Attack",
             color="red",
             density=True,
         )
-        ax.axvline(
-            self.best_strategy["threshold"],
-            color="black",
-            linestyle="--",
-            linewidth=2,
-            label="Threshold",
-        )
-        ax.set_xlabel("Ensemble Score")
-        ax.set_title("Score Distribution")
+        ax.set_xlabel("IF Anomaly Score")
+        ax.set_title("IF Score Distribution (Latent Space)")
         ax.legend()
         ax.grid(alpha=0.3)
 
+        # Plot 3: Latent space 2D projection
         ax = axes[0, 2]
-        top_strategies = sorted(
-            self.strategy_results, key=lambda x: x["f1"], reverse=True
-        )[:8]
-        names = [r["name"] for r in top_strategies]
-        f1s = [r["f1"] for r in top_strategies]
-        colors = [
-            "gold" if r["name"] == self.best_strategy["name"] else "steelblue"
-            for r in top_strategies
+        sample_size = min(10000, len(self.latent_test))
+        sample_idx = np.random.choice(len(self.latent_test), sample_size, replace=False)
+        colors_scatter = [
+            "red" if self.test_labels.iloc[i] == 1 else "green" for i in sample_idx
         ]
-        ax.barh(names, f1s, color=colors)
-        ax.set_xlabel("F1-Score")
-        ax.set_title("Ensemble Strategies")
-        ax.grid(alpha=0.3, axis="x")
+        if self.latent_test.shape[1] >= 2:
+            ax.scatter(
+                self.latent_test[sample_idx, 0],
+                self.latent_test[sample_idx, 1],
+                c=colors_scatter,
+                alpha=0.3,
+                s=1,
+            )
+            ax.set_xlabel("Latent Dim 0")
+            ax.set_ylabel("Latent Dim 1")
+        ax.set_title("Latent Space (First 2 Dims)")
+        ax.grid(alpha=0.3)
 
+        # Plot 4: Confusion matrix
         ax = axes[1, 0]
         cm = np.array(
             [
-                [self.best_strategy["tn"], self.best_strategy["fp"]],
-                [self.best_strategy["fn"], self.best_strategy["tp"]],
+                [self.if_metrics["tn"], self.if_metrics["fp"]],
+                [self.if_metrics["fn"], self.if_metrics["tp"]],
             ]
         )
         im = ax.imshow(cm, cmap="Blues")
@@ -834,46 +685,53 @@ class DeepAutoencoder:
         ax.set_yticks([0, 1])
         ax.set_xticklabels(["Normal", "Attack"])
         ax.set_yticklabels(["Normal", "Attack"])
-        ax.set_title(f'Confusion Matrix ({self.best_strategy["name"]})')
+        ax.set_title("Confusion Matrix (AE->IF)")
 
+        # Plot 5: IF score vs latent norm
         ax = axes[1, 1]
-        ae_score_norm = (self.ae_mse_scores - self.ae_normalization_params["min"]) / (
-            self.ae_normalization_params["norm_max"]
-            - self.ae_normalization_params["min"]
-            + 1e-10
-        )
-        ae_score_norm = np.clip(ae_score_norm, 0, 1)
-
-        sample_size = min(10000, len(ae_score_norm))
-        sample_idx = np.random.choice(len(ae_score_norm), sample_size, replace=False)
-        colors_scatter = [
-            "red" if self.test_labels.iloc[i] == 1 else "green" for i in sample_idx
-        ]
+        latent_norms = np.linalg.norm(self.latent_test[sample_idx], axis=1)
         ax.scatter(
-            ae_score_norm[sample_idx],
-            self.rf_probabilities[sample_idx],
+            latent_norms,
+            self.if_scores[sample_idx],
             c=colors_scatter,
             alpha=0.3,
             s=1,
         )
-        ax.plot([0, 1], [0, 1], "k--", linewidth=1)
-        ax.set_xlabel("Deep AE Score (normalized)")
-        ax.set_ylabel("RF Score (probability)")
-        ax.set_title("AE vs RF Scores")
+        ax.set_xlabel("Latent Vector Norm")
+        ax.set_ylabel("IF Anomaly Score")
+        ax.set_title("Latent Norm vs IF Score")
         ax.grid(alpha=0.3)
 
+        # Plot 6: Per-attack-type detection rates
         ax = axes[1, 2]
-        feature_importance = self.random_forest_model.feature_importances_
-        top_10_idx = np.argsort(feature_importance)[-10:]
-        ax.barh(range(10), feature_importance[top_10_idx], color="teal")
-        ax.set_yticks(range(10))
-        ax.set_yticklabels([f"F{i}" for i in top_10_idx], fontsize=8)
-        ax.set_xlabel("Importance")
-        ax.set_title("Top 10 Feature Importance (RF)")
+        attack_labels = self.labels[
+            ~self.labels.isin(["BENIGN", "Benign"]) & (self.labels.notna())
+        ]
+        attack_types = sorted(attack_labels.unique())
+        detection_rates = []
+        attack_names = []
+        for attack_type in attack_types:
+            mask = self.labels == attack_type
+            detected = (self.if_predictions[mask] == -1).sum()
+            total = mask.sum()
+            rate = detected / total if total > 0 else 0
+            detection_rates.append(rate)
+            attack_names.append(attack_type[:20])
+
+        if attack_names:
+            colors_bar = [
+                "red" if r < 0.5 else "orange" if r < 0.8 else "green"
+                for r in detection_rates
+            ]
+            ax.barh(range(len(attack_names)), detection_rates, color=colors_bar)
+            ax.set_yticks(range(len(attack_names)))
+            ax.set_yticklabels(attack_names, fontsize=8)
+        ax.set_xlabel("Detection Rate")
+        ax.set_title("Per-Attack Detection Rate (IF)")
         ax.grid(alpha=0.3, axis="x")
 
         plt.tight_layout()
-        plot_path = Path("plots") / "deep_ae_ensemble_analysis.png"
+        plot_path = Path("plots") / "deep_ae_if_analysis.png"
         plt.savefig(plot_path, dpi=150, bbox_inches="tight")
         self.log.info(f"Saved: {plot_path}")
         plt.close()

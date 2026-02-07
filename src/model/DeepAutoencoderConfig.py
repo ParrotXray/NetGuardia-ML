@@ -2,9 +2,9 @@
 Deep Autoencoder Configuration Module.
 
 This module defines the configuration dataclass for training a Deep Autoencoder
-combined with Random Forest ensemble for network traffic anomaly detection.
-The autoencoder learns compressed representations of normal traffic patterns,
-while the Random Forest provides additional classification capability.
+combined with Isolation Forest for network traffic anomaly detection.
+The autoencoder learns compressed latent representations of normal traffic patterns,
+while the Isolation Forest performs anomaly detection in the latent space.
 """
 
 from dataclasses import dataclass, field
@@ -14,11 +14,13 @@ from typing import List
 @dataclass
 class DeepAutoencoderConfig:
     """
-    Configuration for Deep Autoencoder with Random Forest Ensemble.
+    Configuration for Deep Autoencoder with Isolation Forest (Latent Space).
 
-    This configuration controls the training parameters for a hybrid anomaly
-    detection model that combines deep autoencoder reconstruction error with
-    Random Forest classification.
+    Architecture: AE Encoder (feature extraction) -> IF (anomaly detection in latent space)
+
+    The autoencoder compresses input features into a low-dimensional latent space.
+    The Isolation Forest then operates on these latent features for anomaly detection,
+    following the literature-standard approach.
 
     Attributes:
         Data Preprocessing:
@@ -45,18 +47,14 @@ class DeepAutoencoderConfig:
             reduce_lr_factor: Factor to reduce learning rate by.
             min_lr: Minimum learning rate threshold.
 
-        Random Forest Parameters:
-            rf_n_estimators: Number of trees in the forest.
-            rf_max_depth: Maximum depth of each tree.
-            rf_min_samples_split: Minimum samples required to split a node.
-            rf_min_samples_leaf: Minimum samples required at a leaf node.
-            rf_max_features: Number of features to consider for best split.
-            rf_n_jobs: Number of parallel jobs (-1 uses all processors).
-            rf_random_state: Random seed for reproducibility.
-            rf_train_samples: Number of samples used for training Random Forest.
+        Isolation Forest Parameters:
+            if_n_estimators: Number of isolation trees.
+            if_contamination: Expected proportion of anomalies in training data.
+            if_max_samples: Number of samples to draw for training each tree.
+            if_max_features: Number of features to draw for each tree.
+            if_random_state: Random seed for reproducibility.
 
-        Ensemble Configuration:
-            ensemble_strategies: List of weight ratios for combining AE and RF scores.
+        Evaluation Configuration:
             percentiles: Percentile thresholds for anomaly score evaluation.
     """
 
@@ -68,7 +66,7 @@ class DeepAutoencoderConfig:
     fill_value: float = 0.0
 
     # Autoencoder Architecture Parameters
-    encoding_dim: int = 16
+    encoding_dim: int = 8
     layer_sizes: List[int] = field(default_factory=lambda: [1024, 512, 256, 128, 64])
     dropout_rates: List[float] = field(
         default_factory=lambda: [0.3, 0.25, 0.2, 0.15, 0.0]
@@ -86,35 +84,18 @@ class DeepAutoencoderConfig:
     reduce_lr_factor: float = 0.5
     min_lr: float = 1e-7
 
-    # Random Forest Parameters
-    rf_n_estimators: int = 100
-    rf_max_depth: int = 20
-    rf_min_samples_split: int = 10
-    rf_min_samples_leaf: int = 5
-    rf_max_features: str = "sqrt"
-    rf_n_jobs: int = -1
-    rf_random_state: int = 42
-    rf_train_samples: int = 50000
-
-    # Ensemble Configuration
-    ensemble_strategies: List[float] = field(
-        default_factory=lambda: [0.4, 0.5, 0.6, 0.7, 0.8]
-    )
+    # Isolation Forest Parameters
+    if_n_estimators: int = 100
+    if_contamination: float = 0.05
+    if_max_samples: str = "auto"
+    if_max_features: float = 1.0
+    if_random_state: int = 42
 
     # Anomaly Score Thresholds
     percentiles: List[float] = field(
         default_factory=lambda: [97.0, 98.0, 99.0, 99.5, 99.7, 99.9]
     )
 
-    # Confidence Thresholds (for reducing sensitivity)
-    min_precision: float = 0.6  # Minimum precision required (higher = less sensitive)
-    min_tpr: float = (
-        0.80  # Minimum true positive rate (lower = allows more missed attacks)
-    )
-    strategy_selection: str = "max"  # "max" for highest F1, "median" for balanced
-
-    # output_csv_name: str = "output_deep_ae_ensemble"
-    # output_model_ae: str = "deep_autoencoder"
-    # output_model_rf: str = "random_forest"
-    # output_config: str = "deep_ae_ensemble_config"
-    # output_plot: str = "deep_ae_ensemble_analysis"
+    # Confidence Thresholds
+    min_precision: float = 0.6
+    min_tpr: float = 0.80

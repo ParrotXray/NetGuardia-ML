@@ -6,8 +6,8 @@ Perceptron neural network for network traffic classification. The MLP is
 used for supervised multi-class classification of network attack types.
 """
 
-from typing import List
 from dataclasses import dataclass, field
+from typing import List
 
 
 @dataclass

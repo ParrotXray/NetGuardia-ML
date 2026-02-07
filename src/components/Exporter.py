@@ -1,19 +1,21 @@
 import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
-import ujson
+import joblib
 import numpy as np
+import onnx
+import onnxruntime as ort
 import pandas as pd
 import torch
 import torch.nn as nn
-import onnx
-import onnxruntime as ort
-import joblib
-from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
+import ujson
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
-from utils import Logger
+
 from model import ExportConfig
+from utils import Logger
+
 from .DeepAutoencoder import AutoencoderModel
 from .MLP import MLPModel
 
@@ -21,18 +23,17 @@ from .MLP import MLPModel
 class Exporter:
     def __init__(self, config: Optional[ExportConfig] = None) -> None:
         self.deep_ae_model: Optional[AutoencoderModel] = None
-        self.rf_model: Optional[Any] = None
+        self.if_model: Optional[Any] = None
         self.mlp_model: Optional[MLPModel] = None
         self.label_encoder: Optional[Any] = None
 
         self.scaler: Optional[Any] = None
         self.clip_params: Optional[Dict[str, Dict[str, float]]] = None
-        self.best_strategy: Optional[Dict[str, Any]] = None
-        self.ae_normalization: Optional[Dict[str, float]] = None
+        self.if_metrics: Optional[Dict[str, Any]] = None
         self.encoding_dim: Optional[int] = None
 
-        self.deep_ae_onnx_path: Optional[Path] = None
-        self.rf_onnx_path: Optional[Path] = None
+        self.encoder_onnx_path: Optional[Path] = None
+        self.if_onnx_path: Optional[Path] = None
         self.mlp_onnx_path: Optional[Path] = None
 
         self.full_config: Optional[Dict[str, Any]] = None
@@ -78,11 +79,11 @@ class Exporter:
             raise
 
         try:
-            rf_path = model_path / "random_forest.pkl"
-            self.rf_model = joblib.load(rf_path)
-            self.log.info("Random Forest loaded")
+            if_path = model_path / "isolation_forest.pkl"
+            self.if_model = joblib.load(if_path)
+            self.log.info("Isolation Forest loaded")
         except Exception as e:
-            self.log.error(f"Failed to load Random Forest: {e}")
+            self.log.error(f"Failed to load Isolation Forest: {e}")
             raise
 
         try:
@@ -109,31 +110,26 @@ class Exporter:
             raise
 
         try:
-            config_path = model_path / "deep_ae_ensemble_config.pkl"
-            ensemble_config = joblib.load(config_path)
-            self.scaler = ensemble_config["scaler"]
-            self.clip_params = ensemble_config["clip_params"]
-            self.best_strategy = ensemble_config["best"]
-            self.ae_normalization = ensemble_config.get("ae_normalization", None)
-            self.encoding_dim = ensemble_config.get("encoding_dim", 16)
-            self.log.info("Ensemble configuration loaded")
+            config_path = model_path / "deep_ae_if_config.pkl"
+            ae_if_config = joblib.load(config_path)
+            self.scaler = ae_if_config["scaler"]
+            self.clip_params = ae_if_config["clip_params"]
+            self.if_metrics = ae_if_config.get("if_metrics", None)
+            self.encoding_dim = ae_if_config.get("encoding_dim", 16)
+            self.log.info("AE-IF configuration loaded")
 
-            if self.ae_normalization:
-                print("AE normalization parameters found:")
-                self.log.info(f"Min: {self.ae_normalization['min']:.6f}")
-                self.log.info(f"Max: {self.ae_normalization['max']:.6f}")
-                self.log.info(f"Mean: {self.ae_normalization['mean']:.6f}")
-                self.log.info(f"Std: {self.ae_normalization['std']:.6f}")
-            else:
-                self.log.warning(
-                    "Missing ae_normalization in config, please re-run ensemble training"
-                )
+            if self.if_metrics:
+                print("IF detection metrics:")
+                self.log.info(f"TPR: {self.if_metrics['tpr']:.2%}")
+                self.log.info(f"FPR: {self.if_metrics['fpr']:.2%}")
+                self.log.info(f"Precision: {self.if_metrics['precision']:.3f}")
+                self.log.info(f"F1: {self.if_metrics['f1']:.3f}")
         except Exception as e:
             self.log.error(f"Failed to load configuration: {e}")
             raise
 
-    def export_deep_ae_onnx(self) -> None:
-        self.log.info("Converting Deep Autoencoder to ONNX...")
+    def export_encoder_onnx(self) -> None:
+        self.log.info("Converting AE Encoder to ONNX...")
 
         if not os.path.exists("./exports"):
             os.makedirs("./exports", exist_ok=True)
@@ -142,50 +138,51 @@ class Exporter:
         input_dim = self.deep_ae_model.input_dim
         dummy_input = torch.randn(1, input_dim)
 
-        self.deep_ae_onnx_path = Path("exports") / "deep_autoencoder.onnx"
+        # Export only the encoder portion
+        encoder_wrapper = self.deep_ae_model.encoder
+
+        self.encoder_onnx_path = Path("exports") / "encoder.onnx"
 
         torch.onnx.export(
-            self.deep_ae_model,
+            encoder_wrapper,
             (dummy_input,),
-            self.deep_ae_onnx_path,
+            self.encoder_onnx_path,
             export_params=True,
             opset_version=self.config.opset_version,
             do_constant_folding=True,
             input_names=["input"],
-            output_names=["output"],
+            output_names=["latent"],
             dynamo=False,
             external_data=False,
         )
 
-        self.log.info(f"Saved: {self.deep_ae_onnx_path}")
+        self.log.info(f"Saved: {self.encoder_onnx_path}")
 
-        onnx_model = onnx.load(self.deep_ae_onnx_path)
+        onnx_model = onnx.load(self.encoder_onnx_path)
         onnx.checker.check_model(onnx_model)
         self.log.info("ONNX model validation passed")
 
-    def export_rf_onnx(self) -> None:
-        self.log.info("Converting Random Forest to ONNX...")
+    def export_if_onnx(self) -> None:
+        self.log.info("Converting Isolation Forest to ONNX...")
 
         if not os.path.exists("./exports"):
             os.makedirs("./exports", exist_ok=True)
 
-        n_features = len(self.clip_params)
-        initial_type = [("float_input", FloatTensorType([None, n_features]))]
+        initial_type = [("float_input", FloatTensorType([None, self.encoding_dim]))]
 
         onx = convert_sklearn(
-            self.rf_model,
+            self.if_model,
             initial_types=initial_type,
             target_opset=self.config.opset_version,
-            options={id(self.rf_model): {"zipmap": False}},
         )
 
-        self.rf_onnx_path = Path("exports") / "random_forest.onnx"
-        with open(self.rf_onnx_path, "wb") as f:
+        self.if_onnx_path = Path("exports") / "isolation_forest.onnx"
+        with open(self.if_onnx_path, "wb") as f:
             f.write(onx.SerializeToString())
 
-        self.log.info(f"Saved: {self.rf_onnx_path}")
+        self.log.info(f"Saved: {self.if_onnx_path}")
 
-        onnx_model = onnx.load(self.rf_onnx_path)
+        onnx_model = onnx.load(self.if_onnx_path)
         onnx.checker.check_model(onnx_model)
         self.log.info("ONNX model validation passed")
 
@@ -249,44 +246,13 @@ class Exporter:
                 "upper": float(params["upper"]),
             }
 
-        ensemble_params = {
-            "strategy_name": self.best_strategy["name"],
-            "threshold": float(self.best_strategy["threshold"]),
-            "tpr": float(self.best_strategy["tpr"]),
-            "fpr": float(self.best_strategy["fpr"]),
-            "precision": float(self.best_strategy["precision"]),
-            "f1": float(self.best_strategy["f1"]),
-            "precision_levels": self.best_strategy.get("precision_levels", {}),
-        }
-
-        if self.ae_normalization:
-            ae_normalization_json = {
-                "min": float(self.ae_normalization["min"]),
-                "max": float(self.ae_normalization["max"]),
-                "norm_max": float(
-                    self.ae_normalization.get("norm_max", self.ae_normalization["max"])
-                ),
-                "mean": float(self.ae_normalization["mean"]),
-                "std": float(self.ae_normalization["std"]),
-                "median": float(self.ae_normalization.get("median", 0.0)),
-                "p90": float(self.ae_normalization.get("p90", 0.0)),
-                "p95": float(self.ae_normalization.get("p95", 0.0)),
-                "p99": float(self.ae_normalization.get("p99", 0.0)),
-            }
-        else:
-            self.log.warning(
-                "Using default AE normalization parameters (not recommended)"
-            )
-            ae_normalization_json = {
-                "min": 0.0,
-                "max": 1.0,
-                "norm_max": 1.0,
-                "mean": 0.0,
-                "std": 1.0,
-                "median": 0.0,
-                "p90": 0.0,
-                "p95": 0.0,
-                "p99": 0.0,
+        if_metrics_json = {}
+        if self.if_metrics:
+            if_metrics_json = {
+                "tpr": float(self.if_metrics["tpr"]),
+                "fpr": float(self.if_metrics["fpr"]),
+                "precision": float(self.if_metrics["precision"]),
+                "f1": float(self.if_metrics["f1"]),
             }
 
         attack_labels = {
@@ -296,16 +262,18 @@ class Exporter:
         self.full_config = {
             "created_at": pd.Timestamp.now().isoformat(),
             "framework": "PyTorch",
+            "architecture": "AE_Encoder -> IsolationForest (latent space)",
             "model": {
-                "deep_autoencoder": {
-                    "file": "deep_autoencoder.onnx",
+                "encoder": {
+                    "file": "encoder.onnx",
                     "input_dim": int(self.deep_ae_model.input_dim),
                     "encoding_dim": int(self.encoding_dim),
                 },
-                "random_forest": {
-                    "file": "random_forest.onnx",
-                    "n_estimators": int(self.rf_model.n_estimators),
-                    "n_features": int(len(self.clip_params)),
+                "isolation_forest": {
+                    "file": "isolation_forest.onnx",
+                    "n_estimators": int(self.if_model.n_estimators),
+                    "contamination": float(self.if_model.contamination),
+                    "latent_dim": int(self.encoding_dim),
                 },
                 "mlp_classifier": {
                     "file": "mlp.onnx",
@@ -321,22 +289,20 @@ class Exporter:
                     "max": self.config.post_scaling_clip_max,
                 },
             },
-            "ensemble": ensemble_params,
-            "ae_normalization": ae_normalization_json,
+            "if_metrics": if_metrics_json,
             "attack_labels": attack_labels,
             "feature_order": scaler_params["feature_names"],
         }
 
         self.inference_config = {
-            "threshold": ensemble_params["threshold"],
-            "strategy_name": ensemble_params["strategy_name"],
-            "precision_levels": ensemble_params["precision_levels"],
+            "architecture": "AE_Encoder -> IsolationForest (latent space)",
             "clip_params": clip_params_json,
             "scaler_mean": scaler_params["mean"],
             "scaler_std": scaler_params["std"],
             "post_clip_min": self.config.post_scaling_clip_min,
             "post_clip_max": self.config.post_scaling_clip_max,
-            "ae_normalization": ae_normalization_json,
+            "encoding_dim": int(self.encoding_dim),
+            "if_metrics": if_metrics_json,
             "attack_labels": attack_labels,
             "feature_names": scaler_params["feature_names"],
         }
@@ -382,32 +348,30 @@ class Exporter:
             self.config.post_scaling_clip_max,
         ).astype(np.float32)
 
-        print("Testing Deep Autoencoder:")
-        session_ae = ort.InferenceSession(str(self.deep_ae_onnx_path))
-        ae_output = session_ae.run(None, {"input": test_input_scaled})[0]
-        ae_mse = np.mean((test_input_scaled - ae_output) ** 2)
-        print(f"AE MSE: {ae_mse:.6f}")
+        # Step 1: Encoder (feature extraction -> latent space)
+        print("Testing AE Encoder:")
+        session_encoder = ort.InferenceSession(str(self.encoder_onnx_path))
+        latent_output = session_encoder.run(None, {"input": test_input_scaled})[0]
+        print(f"Input dim: {test_input_scaled.shape[1]}")
+        print(f"Latent dim: {latent_output.shape[1]}")
+        print(f"Latent values: {latent_output[0][:5]}...")
 
+        # Step 2: Isolation Forest (anomaly detection in latent space)
         print()
-        print("Testing Random Forest:")
-        session_rf = ort.InferenceSession(str(self.rf_onnx_path))
-        rf_output = session_rf.run(None, {"float_input": test_input_scaled})
-        rf_label = rf_output[0][0]
-        rf_proba_matrix = rf_output[1]
+        print("Testing Isolation Forest (latent space):")
+        session_if = ort.InferenceSession(str(self.if_onnx_path))
+        if_output = session_if.run(None, {"float_input": latent_output})
+        if_label = if_output[0][0]
+        if_scores = if_output[1]
 
-        if rf_proba_matrix.shape[1] > 1:
-            rf_proba = (
-                rf_proba_matrix[0][1]
-                if rf_proba_matrix.shape[1] == 2
-                else np.max(rf_proba_matrix[0])
-            )
-        else:
-            rf_proba = rf_proba_matrix[0][0]
+        print(
+            f"IF Prediction: {if_label} ({'anomaly' if if_label == -1 else 'normal'})"
+        )
+        print(f"IF Score output: {if_scores[0]}")
 
-        print(f"RF Predicted Label: {rf_label}")
-        print(f"RF Attack Probability: {rf_proba:.6f}")
-        print(f"RF Probability Distribution: {rf_proba_matrix[0]}")
+        is_anomaly = if_label == -1
 
+        # Step 3: MLP (attack classification if anomaly)
         print()
         print("Testing MLP Classifier:")
         session_mlp = ort.InferenceSession(str(self.mlp_onnx_path))
@@ -422,44 +386,18 @@ class Exporter:
         )
         print(f"Confidence: {confidence:.6f}")
 
+        # Pipeline summary
         print()
-        print("Testing Ensemble:")
-        ae_normalization_json = self.full_config["ae_normalization"]
-        ae_score_norm = (ae_mse - ae_normalization_json["min"]) / (
-            ae_normalization_json["max"] - ae_normalization_json["min"] + 1e-10
+        print("Pipeline Result:")
+        print(
+            f"  Input ({n_features}D) -> Encoder -> Latent ({latent_output.shape[1]}D) -> IF -> {'ANOMALY' if is_anomaly else 'NORMAL'}"
         )
-        ae_score_norm = np.clip(ae_score_norm, 0, 1)
-        rf_score_norm = rf_proba
-
-        print(f"AE Score (normalized): {ae_score_norm:.6f}")
-        print(f"RF Score: {rf_score_norm:.6f}")
-
-        ensemble_params = self.full_config["ensemble"]
-        strategy_name = ensemble_params["strategy_name"]
-
-        if strategy_name.startswith("W_"):
-            parts = strategy_name.split("_")[1].split(":")
-            w1, w2 = int(parts[0]) / 10, int(parts[1]) / 10
-
-            if "ae" in strategy_name.lower() or w1 > w2:
-                ensemble_score = w1 * ae_score_norm + w2 * rf_score_norm
-            else:
-                ensemble_score = w1 * rf_score_norm + w2 * ae_score_norm
-        else:
-            ensemble_score = (rf_score_norm + ae_score_norm) / 2.0
-
-        is_anomaly = ensemble_score > ensemble_params["threshold"]
-
-        print(f"Ensemble Score: {ensemble_score:.6f}")
-        print(f"Threshold: {ensemble_params['threshold']:.6f}")
-        print(f"Is Anomaly: {is_anomaly}")
-
         if is_anomaly:
             print(
-                f"Predicted as Attack: {self.label_encoder.classes_[predicted_class]} (Confidence: {confidence:.2%})"
+                f"  Attack Type: {self.label_encoder.classes_[predicted_class]} (Confidence: {confidence:.2%})"
             )
         else:
-            print(f"Predicted as Normal Traffic")
+            print(f"  Predicted as Normal Traffic")
         print()
 
     def print_summary(self) -> None:
@@ -468,26 +406,24 @@ class Exporter:
         print("Model Information:")
         input_dim = self.deep_ae_model.input_dim
         print(f"Framework: PyTorch + PyTorch Lightning")
-        print(f"Deep AE: {input_dim} dim -> {self.encoding_dim} dim bottleneck")
-        print(f"Random Forest: {self.rf_model.n_estimators} trees")
+        print(f"Architecture: AE Encoder -> IF (Latent Space)")
+        print(f"Encoder: {input_dim}D -> {self.encoding_dim}D latent space")
+        print(
+            f"Isolation Forest: {self.if_model.n_estimators} trees on {self.encoding_dim}D latent"
+        )
         print(f"MLP: {len(self.label_encoder.classes_)} attack classes")
 
-        ensemble_params = self.full_config["ensemble"]
-        print(
-            f"Ensemble: {ensemble_params['strategy_name']} (threshold={ensemble_params['threshold']:.4f})"
-        )
+        if self.if_metrics:
+            print()
+            print("Detection Metrics (AE->IF):")
+            print(f"TPR: {self.if_metrics['tpr']:.2%}")
+            print(f"FPR: {self.if_metrics['fpr']:.2%}")
+            print(f"Precision: {self.if_metrics['precision']:.3f}")
+            print(f"F1-Score: {self.if_metrics['f1']:.3f}")
 
         print()
-        print("Performance Metrics:")
-        print(f"TPR: {ensemble_params['tpr']:.2%}")
-        print(f"FPR: {ensemble_params['fpr']:.2%}")
-        print(f"Precision: {ensemble_params['precision']:.3f}")
-        print(f"F1-Score: {ensemble_params['f1']:.3f}")
-
-        ae_norm = self.full_config["ae_normalization"]
-        print()
-        print("AE Normalization Parameters:")
-        print(f"Min: {ae_norm['min']:.6f}")
-        print(f"Max: {ae_norm['max']:.6f}")
-        print(f"Mean: {ae_norm['mean']:.6f}")
-        print(f"Std: {ae_norm['std']:.6f}")
+        print("Inference Pipeline:")
+        print(f"  1. Preprocess: clip + scale ({input_dim} features)")
+        print(f"  2. Encode: AE encoder ({input_dim}D -> {self.encoding_dim}D)")
+        print(f"  3. Detect: IF on latent space (normal/anomaly)")
+        print(f"  4. Classify: MLP on original features (attack type)")

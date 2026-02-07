@@ -1,13 +1,13 @@
 import os
-
-import pandas as pd
-import numpy as np
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import pandas as pd
 import ujson
-from typing import List, Optional, Dict, Any
+
+from model import PreprocessConfig, UnsupportedDatasetError
 from utils import Logger
-from model import PreprocessConfig
-from model import UnsupportedDatasetError
 
 
 class DataPreprocess:

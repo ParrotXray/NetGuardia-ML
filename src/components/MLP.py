@@ -1,29 +1,27 @@
 import os
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
-import pandas as pd
+import joblib
+import lightning as L
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import seaborn as sns
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
-import lightning as L
+from imblearn.over_sampling import SMOTE
+from lightning.pytorch.callbacks import (EarlyStopping, LearningRateMonitor,
+                                         ModelCheckpoint)
 from lightning.pytorch.loggers import CSVLogger
-from lightning.pytorch.callbacks import (
-    EarlyStopping,
-    ModelCheckpoint,
-    LearningRateMonitor,
-)
+from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.utils.class_weight import compute_class_weight
-from imblearn.over_sampling import SMOTE
-import matplotlib.pyplot as plt
-from pathlib import Path
-import seaborn as sns
-import joblib
-from utils import Logger
+from torch.utils.data import DataLoader, TensorDataset
+
 from model import MLPConfig
-from typing import List, Optional, Dict, Any, Tuple
+from utils import Logger
 
 
 class MLPModel(nn.Module):
@@ -170,16 +168,16 @@ class MLP:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def load_data(self) -> None:
-        self.log.info("Loading data from outputs/deep_ae_ensemble.csv...")
-        self.raw_data = pd.read_csv("./outputs/deep_ae_ensemble.csv")
+        self.log.info("Loading data from outputs/deep_ae_if.csv...")
+        self.raw_data = pd.read_csv("./outputs/deep_ae_if.csv")
         self.raw_data.columns = self.raw_data.columns.str.strip()
 
         self.log.info(
-            "Loading preprocessing config from artifacts/deep_ae_ensemble_config.pkl..."
+            "Loading preprocessing config from artifacts/deep_ae_if_config.pkl..."
         )
-        ensemble_config = joblib.load("./artifacts/deep_ae_ensemble_config.pkl")
-        self.scaler = ensemble_config["scaler"]
-        self.clip_params = ensemble_config["clip_params"]
+        ae_if_config = joblib.load("./artifacts/deep_ae_if_config.pkl")
+        self.scaler = ae_if_config["scaler"]
+        self.clip_params = ae_if_config["clip_params"]
 
         self.anomaly_data = self.raw_data.copy()
         self.log.info(f"Attack anomaly samples: {len(self.anomaly_data):,}")
@@ -189,10 +187,8 @@ class MLP:
 
         exclude_cols = [
             "Label",
-            "deep_ae_mse",
-            "rf_proba",
-            "ensemble_score",
-            "ensemble_anomaly",
+            "if_score",
+            "if_prediction",
         ]
         self.features = self.anomaly_data.drop(columns=exclude_cols, errors="ignore")
         self.labels = self.anomaly_data["Label"]
@@ -290,20 +286,18 @@ class MLP:
             self.test_features = self.test_features[test_mask]
             self.test_labels = self.test_labels[test_mask]
 
+            old_classes = self.label_encoder.classes_
+            train_label_names = [old_classes[i] for i in self.train_labels]
+            test_label_names = [old_classes[i] for i in self.test_labels]
+
             remaining_labels = [
-                self.label_encoder.classes_[i]
-                for i in range(len(self.label_encoder.classes_))
+                old_classes[i]
+                for i in range(len(old_classes))
                 if i not in removed_classes
             ]
             self.label_encoder = LabelEncoder()
             self.label_encoder.fit(remaining_labels)
 
-            train_label_names = [
-                self.label_encoder.classes_[i] for i in self.train_labels
-            ]
-            test_label_names = [
-                self.label_encoder.classes_[i] for i in self.test_labels
-            ]
             self.train_labels = self.label_encoder.transform(train_label_names)
             self.test_labels = self.label_encoder.transform(test_label_names)
 

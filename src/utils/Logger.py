@@ -1,8 +1,9 @@
-import os
 import logging
+import os
+from logging.handlers import RotatingFileHandler
+
 import coloredlogs
 from termcolor import colored
-from logging.handlers import RotatingFileHandler
 
 
 class Logger:
