@@ -290,20 +290,18 @@ class MLP:
             self.test_features = self.test_features[test_mask]
             self.test_labels = self.test_labels[test_mask]
 
+            old_classes = self.label_encoder.classes_
+            train_label_names = [old_classes[i] for i in self.train_labels]
+            test_label_names = [old_classes[i] for i in self.test_labels]
+
             remaining_labels = [
-                self.label_encoder.classes_[i]
-                for i in range(len(self.label_encoder.classes_))
+                old_classes[i]
+                for i in range(len(old_classes))
                 if i not in removed_classes
             ]
             self.label_encoder = LabelEncoder()
             self.label_encoder.fit(remaining_labels)
 
-            train_label_names = [
-                self.label_encoder.classes_[i] for i in self.train_labels
-            ]
-            test_label_names = [
-                self.label_encoder.classes_[i] for i in self.test_labels
-            ]
             self.train_labels = self.label_encoder.transform(train_label_names)
             self.test_labels = self.label_encoder.transform(test_label_names)
 
